@@ -181,7 +181,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
     <div class="chart-grid wide"><div class="cc"><div style="height:250px"><canvas id="ab-bar"></canvas></div></div></div>
     <div class="chart-grid">
       <div class="cc"><div class="cc-title">Component Averages — active projects</div><div style="height:320px"><canvas id="ab-cat"></canvas></div></div>
-      <div class="cc"><div class="cc-title">Irrigation % vs Drainage % · bubble = scope</div><div style="height:320px"><canvas id="ab-scatter"></canvas></div></div>
     </div>
     <div class="slabel">All As-Built Projects</div>
     <div class="table-wrap">
@@ -217,7 +216,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
     <div class="chart-grid wide"><div class="cc"><div style="height:220px"><canvas id="sk-bar"></canvas></div></div></div>
     <div class="chart-grid">
       <div class="cc"><div class="cc-title">Component Averages — active projects</div><div style="height:320px"><canvas id="sk-cat"></canvas></div></div>
-      <div class="cc"><div class="cc-title">Irrigation % vs Drainage % · bubble = scope</div><div style="height:320px"><canvas id="sk-scatter"></canvas></div></div>
     </div>
     <div class="slabel">All Staking Projects</div>
     <div class="table-wrap">
@@ -456,7 +454,6 @@ function buildTab(pfx, type) {
   buildCards(pfx, ps);
   buildBarChart(pfx, ps);
   buildCatChart(pfx, ps);
-  buildScatterChart(pfx, ps);
   buildTable(pfx, ps);
 }
 
@@ -522,20 +519,6 @@ function buildCatChart(pfx, ps) {
   });
 }
 
-function buildScatterChart(pfx, ps) {
-  const id = pfx+'-scatter';
-  if(CH[id]) CH[id].destroy();
-  const act = ps.filter(p=>p.confidence_pct>0);
-  CH[id] = new Chart(document.getElementById(id), {
-    type:'bubble',
-    data:{ datasets:[{ data:act.map(p=>({x:p.irrigation_pct,y:p.drainage_pct,r:Math.max(5,p.total_possible/250),name:p.name,conf:p.confidence_pct})), backgroundColor:act.map(p=>sc(p.confidence_pct)+'66'), borderColor:act.map(p=>sc(p.confidence_pct)), borderWidth:1 }] },
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{...TIP(),callbacks:{ title:i=>sn(i[0].raw.name), label:i=>[`Irrigation: ${i.raw.x}%`,`Drainage: ${i.raw.y}%`,`Confidence: ${i.raw.conf}%`] }} },
-      scales:{ x:{min:0,max:106,title:{display:true,text:'Irrigation %',color:'#4e6280',font:{family:'Space Mono',size:9}},ticks:{color:'#4e6280',font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(33,41,61,.4)'}},
-               y:{min:0,max:106,title:{display:true,text:'Drainage %',color:'#4e6280',font:{family:'Space Mono',size:9}},ticks:{color:'#4e6280',font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(33,41,61,.4)'}} }
-    }
-  });
-}
 
 // ══════════════════════════════════════════
 //  TABLE
