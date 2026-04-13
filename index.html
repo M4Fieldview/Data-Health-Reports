@@ -250,6 +250,15 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
         <div class="clabel">Run Date</div>
         <select class="trend-select" id="jd-date" onchange="renderJobDetail()"></select>
       </div>
+      <div>
+        <div class="clabel">System</div>
+        <select class="trend-select" id="jd-system" onchange="renderJobDetail()">
+          <option value="all">All Systems</option>
+          <option value="irr">Irrigation</option>
+          <option value="drn">Drainage</option>
+          <option value="golf">Golf</option>
+        </select>
+      </div>
     </div>
     <div class="cards" id="jd-cards" style="margin-bottom:20px"></div>
     <div class="slabel">Component Breakdown — selected run date</div>
@@ -732,13 +741,18 @@ function renderJobDetail() {
     <div class="card ${scls(p.drainage_pct)}"><div class="card-label">Drainage</div><div class="card-val">${p.drainage_pct}%</div><div class="card-sub">system score</div></div>
     <div class="card ${scls(p.golf_pct)}"><div class="card-label">Golf</div><div class="card-val">${p.golf_pct}%</div><div class="card-sub">system score</div></div>`;
 
+  // Filter by system
+  const sysFilt = document.getElementById('jd-system').value;
+  const SYS_MAP = { irr: '#3b82f6', drn: '#f97316', golf: '#a78bfa' };
+  const filteredCats = sysFilt === 'all' ? CAT_SYSTEMS : CAT_SYSTEMS.filter(c => c.color === SYS_MAP[sysFilt]);
+
   // Chart
   if (CH['jd-bar']) CH['jd-bar'].destroy();
-  const cats = CAT_SYSTEMS.map(c => c.label);
+  const cats = filteredCats.map(c => c.label);
   const vals = cats.map(c => p.categories[c] || 0);
   CH['jd-bar'] = new Chart(document.getElementById('jd-bar'), {
     type: 'bar',
-    data: { labels: cats, datasets: [{ data: vals, backgroundColor: CAT_SYSTEMS.map(c => c.color+'55'), borderColor: CAT_SYSTEMS.map(c => c.color), borderWidth: 1, borderRadius: 4 }] },
+    data: { labels: cats, datasets: [{ data: vals, backgroundColor: filteredCats.map(c => c.color+'55'), borderColor: filteredCats.map(c => c.color), borderWidth: 1, borderRadius: 4 }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
@@ -752,7 +766,7 @@ function renderJobDetail() {
   // Week-over-week trend per component
   const allDates = dates().filter(d => (RUNS[d]||[]).some(x => x.name === name)).sort();
   if (CH['jd-trend']) CH['jd-trend'].destroy();
-  const trendDatasets = CAT_SYSTEMS.map((sys, i) => ({
+  const trendDatasets = filteredCats.map((sys, i) => ({
     label: sys.label,
     data: allDates.map(d => { const r = (RUNS[d]||[]).find(x => x.name === name); return r ? r.categories[sys.label] : null; }),
     borderColor: sys.color,
