@@ -348,44 +348,11 @@ async function loadData() {
   }
 }
 
-// Fetch JSON — tries direct first, falls back to JSONP for CORS
-function fetchJSON(url) {
-  return new Promise((resolve, reject) => {
-    // Try JSONP (Apps Script supports ?callback=fn)
-    const cbName = '_arc_cb_' + Date.now();
-    const script = document.createElement('script');
-    let done = false;
-
-    window[cbName] = function(data) {
-      done = true;
-      delete window[cbName];
-      document.body.removeChild(script);
-      resolve(data);
-    };
-
-    script.onerror = function() {
-      if (!done) {
-        done = true;
-        delete window[cbName];
-        try { document.body.removeChild(script); } catch(e){}
-        // fallback: try fetch with no-cors won't work for reading, so reject
-        reject(new Error('Could not reach Apps Script. Make sure the Web App is deployed with "Anyone" access.'));
-      }
-    };
-
-    // Timeout
-    setTimeout(() => {
-      if (!done) {
-        done = true;
-        delete window[cbName];
-        try { document.body.removeChild(script); } catch(e){}
-        reject(new Error('Request timed out. Check Web App deployment settings.'));
-      }
-    }, 15000);
-
-    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
-    document.body.appendChild(script);
-  });
+// Fetch JSON directly — Apps Script Web Apps support CORS with "Anyone" access
+async function fetchJSON(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
 }
 
 function parseRow(row) {
