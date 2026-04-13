@@ -709,7 +709,7 @@ function buildJobDetail() {
 
   const sel = document.getElementById('jd-select');
   const prevName = sel.value;
-  sel.innerHTML = [...allProjects.keys()].sort().map(n => `<option value="${n}">${n}</option>`).join('');
+  sel.innerHTML = [...allProjects.keys()].filter(n => !/staking/i.test(n)).sort().map(n => `<option value="${n}">${n}</option>`).join('');
   if (prevName && allProjects.has(prevName)) sel.value = prevName;
 
   populateJobDates();
