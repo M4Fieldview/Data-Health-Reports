@@ -585,17 +585,20 @@ function renderTrends() {
   activeDates.forEach(d=>(RUNS[d]||[]).forEach(p=>{ if(filterType==='all'||p.type===filterType) allNames.add(p.name); }));
 
   if(CH.trendLine) CH.trendLine.destroy();
+  const trendDatasets = [...allNames].map((name,i)=>({
+    label:sn(name),
+    data:activeDates.map(d=>{ const p=(RUNS[d]||[]).find(x=>x.name===name); return p?p.confidence_pct:null; }),
+    borderColor:TCOLORS[i%TCOLORS.length], backgroundColor:TCOLORS[i%TCOLORS.length]+'18',
+    tension:.35, spanGaps:true, pointRadius:4, pointHoverRadius:6,
+  }));
+  const allVals = trendDatasets.flatMap(ds=>ds.data.filter(v=>v!==null));
+  const trendMin = allVals.length ? Math.max(0, Math.floor(Math.min(...allVals) - 10)) : 0;
   CH.trendLine = new Chart(document.getElementById('trendLine'), {
     type:'line',
-    data:{ labels:activeDates, datasets:[...allNames].map((name,i)=>({
-      label:sn(name),
-      data:activeDates.map(d=>{ const p=(RUNS[d]||[]).find(x=>x.name===name); return p?p.confidence_pct:null; }),
-      borderColor:TCOLORS[i%TCOLORS.length], backgroundColor:TCOLORS[i%TCOLORS.length]+'18',
-      tension:.35, spanGaps:true, pointRadius:4, pointHoverRadius:6,
-    }))},
+    data:{ labels:activeDates, datasets:trendDatasets },
     options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
       plugins:{ legend:{position:'bottom',labels:{color:'#8aa0bc',font:{family:'Space Mono',size:9},boxWidth:10,padding:10}}, tooltip:{...TIP(),callbacks:{label:c=>` ${c.dataset.label}: ${c.raw!==null?c.raw+'%':'N/A'}`}} },
-      scales:{ x:XS(), y:{...YS(),min:0,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}} }
+      scales:{ x:XS(), y:{...YS(),min:trendMin,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}} }
     }
   });
 
