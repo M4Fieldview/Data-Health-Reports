@@ -148,6 +148,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
     <button class="tab-btn active" onclick="switchTab('asbuilt',this)">As-Builts</button>
     <button class="tab-btn" onclick="switchTab('staking',this)">Staking</button>
     <button class="tab-btn" onclick="switchTab('trends',this)">Week-over-Week Trends</button>
+    <button class="tab-btn" onclick="switchTab('detail',this)">Job Detail</button>
   </div>
   <div class="header-meta">
     <div class="meta-badge"><span class="status-dot loading" id="statusDot"></span><span id="statusText">Connecting…</span></div>
@@ -230,6 +231,29 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
       </div>
       <div style="overflow-x:auto"><table class="tbl"><thead id="sk-thead"></thead><tbody id="sk-tbody"></tbody></table></div>
     </div>
+  </div>
+</div>
+
+<!-- JOB DETAIL -->
+<div class="page" id="page-detail">
+  <div id="jd-empty" class="empty-state">
+    <h2>No Data Loaded</h2>
+    <p>Data must be loaded before viewing job detail.</p>
+  </div>
+  <div id="jd-content" style="display:none">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;">
+      <div>
+        <div class="clabel">Select Project</div>
+        <select class="trend-select" id="jd-select" onchange="renderJobDetail()" style="min-width:300px;max-width:600px"></select>
+      </div>
+      <div>
+        <div class="clabel">Run Date</div>
+        <select class="trend-select" id="jd-date" onchange="renderJobDetail()"></select>
+      </div>
+    </div>
+    <div class="cards" id="jd-cards" style="margin-bottom:20px"></div>
+    <div class="slabel">Component Breakdown</div>
+    <div class="chart-grid wide"><div class="cc"><div style="height:360px"><canvas id="jd-bar"></canvas></div></div></div>
   </div>
 </div>
 
@@ -436,6 +460,7 @@ function rebuild() {
   buildTab('ab','asbuilt');
   buildTab('sk','staking');
   renderTrends();
+  buildJobDetail();
 }
 
 // ══════════════════════════════════════════
@@ -653,6 +678,76 @@ function closePanel() { document.getElementById('panel').classList.remove('open'
 // ══════════════════════════════════════════
 //  TAB SWITCHING
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+//  JOB DETAIL TAB
+// ══════════════════════════════════════════
+function buildJobDetail() {
+  const allProjects = new Map(); // name -> [dates]
+  dates().forEach(d => (RUNS[d]||[]).forEach(p => {
+    if (!allProjects.has(p.name)) allProjects.set(p.name, []);
+    allProjects.get(p.name).push(d);
+  }));
+
+  if (!allProjects.size) {
+    document.getElementById('jd-empty').style.display = 'block';
+    document.getElementById('jd-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('jd-empty').style.display = 'none';
+  document.getElementById('jd-content').style.display = 'block';
+
+  const sel = document.getElementById('jd-select');
+  const prevName = sel.value;
+  sel.innerHTML = [...allProjects.keys()].sort().map(n => `<option value="${n}">${n}</option>`).join('');
+  if (prevName && allProjects.has(prevName)) sel.value = prevName;
+
+  populateJobDates();
+  renderJobDetail();
+}
+
+function populateJobDates() {
+  const name = document.getElementById('jd-select').value;
+  const ds = dates().filter(d => (RUNS[d]||[]).some(p => p.name === name)).sort().reverse();
+  const dateSel = document.getElementById('jd-date');
+  const prev = dateSel.value;
+  dateSel.innerHTML = ds.map(d => `<option value="${d}">${d}</option>`).join('');
+  if (prev && ds.includes(prev)) dateSel.value = prev;
+}
+
+function renderJobDetail() {
+  populateJobDates();
+  const name = document.getElementById('jd-select').value;
+  const date = document.getElementById('jd-date').value;
+  if (!name || !date) return;
+
+  const p = (RUNS[date]||[]).find(x => x.name === name);
+  if (!p) return;
+
+  // Cards
+  document.getElementById('jd-cards').innerHTML = `
+    <div class="card ${scls(p.confidence_pct)}"><div class="card-label">Confidence</div><div class="card-val">${p.confidence_pct}%</div><div class="card-sub">${p.total_earned.toLocaleString(undefined,{maximumFractionDigits:1})} / ${p.total_possible.toLocaleString(undefined,{maximumFractionDigits:1})} pts</div></div>
+    <div class="card ${scls(p.irrigation_pct)}"><div class="card-label">Irrigation</div><div class="card-val">${p.irrigation_pct}%</div><div class="card-sub">system score</div></div>
+    <div class="card ${scls(p.drainage_pct)}"><div class="card-label">Drainage</div><div class="card-val">${p.drainage_pct}%</div><div class="card-sub">system score</div></div>
+    <div class="card ${scls(p.golf_pct)}"><div class="card-label">Golf</div><div class="card-val">${p.golf_pct}%</div><div class="card-sub">system score</div></div>`;
+
+  // Chart
+  if (CH['jd-bar']) CH['jd-bar'].destroy();
+  const cats = CAT_SYSTEMS.map(c => c.label);
+  const vals = cats.map(c => p.categories[c] || 0);
+  CH['jd-bar'] = new Chart(document.getElementById('jd-bar'), {
+    type: 'bar',
+    data: { labels: cats, datasets: [{ data: vals, backgroundColor: CAT_SYSTEMS.map(c => c.color+'55'), borderColor: CAT_SYSTEMS.map(c => c.color), borderWidth: 1, borderRadius: 4 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { ...TIP(), callbacks: { label: c => ` ${c.raw}%` } },
+        subtitle: { display: true, text: ['■ Irrigation  ■ Drainage  ■ Golf'], color: ['#8aa0bc'], font: { family: 'Space Mono', size: 9 }, padding: { bottom: 6 } }
+      },
+      scales: { x: { ...YS(), min: 0, max: 100, ticks: { ...YS().ticks, callback: v => v+'%' } }, y: { ticks: { color: '#8aa0bc', font: { size: 11 } }, grid: { color: 'rgba(33,41,61,.4)' } } }
+    }
+  });
+}
+
 function switchTab(tab, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
