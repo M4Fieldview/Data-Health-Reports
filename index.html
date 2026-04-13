@@ -179,14 +179,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
     </div>
     <div class="slabel">Confidence Score by Project</div>
     <div class="chart-grid wide"><div class="cc"><div style="height:250px"><canvas id="ab-bar"></canvas></div></div></div>
-    <div class="slabel">Component Averages by System</div>
-    <div class="chart-grid three">
-      <div class="cc"><div class="cc-title">Irrigation Components</div><div style="height:260px"><canvas id="ab-irr"></canvas></div></div>
-      <div class="cc"><div class="cc-title">Drainage Components</div><div style="height:260px"><canvas id="ab-drn"></canvas></div></div>
-      <div class="cc"><div class="cc-title">Golf Components</div><div style="height:260px"><canvas id="ab-golf"></canvas></div></div>
-    </div>
     <div class="chart-grid">
-      <div class="cc"><div class="cc-title">Irrigation % vs Drainage % · bubble = scope</div><div style="height:300px"><canvas id="ab-scatter"></canvas></div></div>
+      <div class="cc"><div class="cc-title">Component Averages — active projects</div><div style="height:320px"><canvas id="ab-cat"></canvas></div></div>
+      <div class="cc"><div class="cc-title">Irrigation % vs Drainage % · bubble = scope</div><div style="height:320px"><canvas id="ab-scatter"></canvas></div></div>
     </div>
     <div class="slabel">All As-Built Projects</div>
     <div class="table-wrap">
@@ -220,14 +215,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
     </div>
     <div class="slabel">Confidence Score by Project</div>
     <div class="chart-grid wide"><div class="cc"><div style="height:220px"><canvas id="sk-bar"></canvas></div></div></div>
-    <div class="slabel">Component Averages by System</div>
-    <div class="chart-grid three">
-      <div class="cc"><div class="cc-title">Irrigation Components</div><div style="height:260px"><canvas id="sk-irr"></canvas></div></div>
-      <div class="cc"><div class="cc-title">Drainage Components</div><div style="height:260px"><canvas id="sk-drn"></canvas></div></div>
-      <div class="cc"><div class="cc-title">Golf Components</div><div style="height:260px"><canvas id="sk-golf"></canvas></div></div>
-    </div>
     <div class="chart-grid">
-      <div class="cc"><div class="cc-title">Irrigation % vs Drainage % · bubble = scope</div><div style="height:300px"><canvas id="sk-scatter"></canvas></div></div>
+      <div class="cc"><div class="cc-title">Component Averages — active projects</div><div style="height:320px"><canvas id="sk-cat"></canvas></div></div>
+      <div class="cc"><div class="cc-title">Irrigation % vs Drainage % · bubble = scope</div><div style="height:320px"><canvas id="sk-scatter"></canvas></div></div>
     </div>
     <div class="slabel">All Staking Projects</div>
     <div class="table-wrap">
@@ -498,28 +488,37 @@ function buildBarChart(pfx, ps) {
   });
 }
 
-const SYS_CATS = {
-  irr:  ['Heads','Quick Couplers','Isolation Valves','Lateral Valves','Lateral Pipe','Mainline'],
-  drn:  ['Basins','Perf Drainage','Solid Drainage'],
-  golf: ['Greens','Tees','Bunkers']
-};
-const SYS_COLOR = { irr:'#3b82f6', drn:'#f97316', golf:'#a78bfa' };
+const CAT_SYSTEMS = [
+  { label:'Heads',             color:'#3b82f6' },
+  { label:'Quick Couplers',    color:'#3b82f6' },
+  { label:'Isolation Valves',  color:'#3b82f6' },
+  { label:'Lateral Valves',    color:'#3b82f6' },
+  { label:'Lateral Pipe',      color:'#3b82f6' },
+  { label:'Mainline',          color:'#3b82f6' },
+  { label:'Basins',            color:'#f97316' },
+  { label:'Perf Drainage',     color:'#f97316' },
+  { label:'Solid Drainage',    color:'#f97316' },
+  { label:'Greens',            color:'#a78bfa' },
+  { label:'Tees',              color:'#a78bfa' },
+  { label:'Bunkers',           color:'#a78bfa' },
+];
 
 function buildCatChart(pfx, ps) {
+  const id = pfx+'-cat';
+  if(CH[id]) CH[id].destroy();
   const act = ps.filter(p=>p.confidence_pct>0);
-  ['irr','drn','golf'].forEach(sys => {
-    const id = pfx+'-'+sys;
-    if(CH[id]) CH[id].destroy();
-    const cats = SYS_CATS[sys];
-    const avgs = cats.map(c=>{ const r=act.filter(p=>p.categories[c]>0); return r.length?+(r.reduce((s,p)=>s+p.categories[c],0)/r.length).toFixed(1):0; });
-    const col = SYS_COLOR[sys];
-    CH[id] = new Chart(document.getElementById(id), {
-      type:'bar', data:{ labels:cats, datasets:[{ data:avgs, backgroundColor:col+'55', borderColor:col, borderWidth:1, borderRadius:3 }] },
-      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{display:false}, tooltip:{...TIP(),callbacks:{label:c=>` ${c.raw}%`}} },
-        scales:{ x:{...YS(),min:0,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}}, y:{ticks:{color:'#8aa0bc',font:{size:10}},grid:{color:'rgba(33,41,61,.4)'}} }
-      }
-    });
+  const avgs = CAT_SYSTEMS.map(({label})=>{ const r=act.filter(p=>p.categories[label]>0); return r.length?+(r.reduce((s,p)=>s+p.categories[label],0)/r.length).toFixed(1):0; });
+  CH[id] = new Chart(document.getElementById(id), {
+    type:'bar',
+    data:{ labels:CAT_SYSTEMS.map(c=>c.label), datasets:[{ data:avgs, backgroundColor:CAT_SYSTEMS.map(c=>c.color+'55'), borderColor:CAT_SYSTEMS.map(c=>c.color), borderWidth:1, borderRadius:3 }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{...TIP(),callbacks:{label:c=>` ${c.raw}%`}},
+        subtitle:{display:true,text:['■ Irrigation  ■ Drainage  ■ Golf'],color:['#8aa0bc'],font:{family:'Space Mono',size:9},padding:{bottom:6}}
+      },
+      scales:{ x:{...YS(),min:0,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}}, y:{ticks:{color:'#8aa0bc',font:{size:10}},grid:{color:'rgba(33,41,61,.4)'}} }
+    }
   });
 }
 
