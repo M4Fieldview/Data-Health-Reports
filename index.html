@@ -814,9 +814,9 @@ function renderJobDetail() {
       plugins: {
         legend: { display: false },
         tooltip: { ...TIP(), callbacks: { label: c => ` ${c.raw}%` } },
-        subtitle: { display: true, text: ['■ Irrigation  ■ Drainage  ■ Golf'], color: ['#8aa0bc'], font: { family: 'Space Mono', size: 9 }, padding: { bottom: 6 } }
+        subtitle: { display: true, text: ['■ Irrigation  ■ Drainage  ■ Golf'], color: ['#eeeeee'], font: { family: 'Space Mono', size: 9 }, padding: { bottom: 6 } }
       },
-      scales: { x: { ...YS(), min: 0, max: 100, ticks: { ...YS().ticks, callback: v => v+'%' } }, y: { ticks: { color: '#8aa0bc', font: { size: 11 } }, grid: { color: 'rgba(33,41,61,.4)' } } }
+      scales: { x: { ...YS(), min: 0, max: 100, ticks: { ...YS().ticks, callback: v => v+'%' } }, y: { ticks: { color: '#eeeeee', font: { size: 11 } }, grid: { color: 'rgba(33,41,61,.4)' } } }
     }
   });
 
@@ -838,7 +838,7 @@ function renderJobDetail() {
     data: { labels: allDates, datasets: trendDatasets },
     options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { position: 'bottom', labels: { color: '#8aa0bc', font: { family: 'Space Mono', size: 9 }, boxWidth: 10, padding: 10 } },
+        legend: { position: 'bottom', labels: { color: '#eeeeee', font: { family: 'Space Mono', size: 9 }, boxWidth: 10, padding: 10 } },
         tooltip: { ...TIP(), callbacks: { label: c => ` ${c.dataset.label}: ${c.raw !== null ? c.raw+'%' : 'N/A'}` } }
       },
       scales: { x: XS(), y: { ...YS(), min: trendMin, max: 100, ticks: { ...YS().ticks, callback: v => v+'%' } } }
@@ -857,8 +857,8 @@ function switchTab(tab, btn) {
 //  CHART HELPERS
 // ══════════════════════════════════════════
 function TIP() { return {backgroundColor:'#161b27',borderColor:'#21293d',borderWidth:1,titleFont:{family:'Space Mono',size:10},bodyColor:'#4e6280',titleColor:'#e2e8f0'}; }
-function XS()  { return {ticks:{color:'#4A6858',font:{family:'Space Mono',size:9}},grid:{color:'rgba(58,110,90,.5)'}}; }
-function YS()  { return {ticks:{color:'#4A6858',font:{family:'Space Mono',size:9}},grid:{color:'rgba(58,110,90,.5)'}}; }
+function XS()  { return {ticks:{color:'#eeeeee',font:{family:'Space Mono',size:9}},grid:{color:'rgba(58,110,90,.5)'}}; }
+function YS()  { return {ticks:{color:'#eeeeee',font:{family:'Space Mono',size:9}},grid:{color:'rgba(58,110,90,.5)'}}; }
 function sn(n) { return n.length>26?n.slice(0,24)+'…':n; }
 function esc(p){ return JSON.stringify(p).replace(/"/g,'&quot;'); }
 function mb(v) { return `<div class="mbar"><div class="mbar-bg"><div class="mbar-fill" style="width:${v}%;background:${sc(v)}"></div></div><div class="mbar-lbl">${v}%</div></div>`; }
