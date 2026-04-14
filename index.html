@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ARCOnline Data Health Report</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg:#21483C; --surface:#05140f; --surface2:#05140f; --border:#05140f;
   --green:#52C48C; --yellow:#C8963A; --red:#B05040; --blue:#3A9BAC;
   --text:#DCE8E2; --muted:#eeeeee; --muted2:#eeeeee;
-  --mono:'Space Mono',monospace; --sans:'Outfit',sans-serif;
+  --mono:'Outfit',sans-serif; --sans:'Outfit',sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:500;min-height:100vh;}
@@ -562,7 +562,7 @@ function buildCatChart(pfx, ps) {
       plugins:{
         legend:{display:false},
         tooltip:{...TIP(),callbacks:{label:c=>` ${c.raw.toFixed(1)}%`}},
-        subtitle:{display:true,text:['■ Irrigation  ■ Drainage  ■ Golf'],color:['#eeeeee'],font:{family:'Space Mono',size:9},padding:{bottom:6}}
+        subtitle:{display:true,text:['■ Irrigation  ■ Drainage  ■ Golf'],color:['#eeeeee'],font:{family:'Outfit',size:9},padding:{bottom:6}}
       },
       scales:{ x:{...YS(),min:0,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}}, y:{ticks:{color:'#eeeeee',font:{size:10}},grid:{color:'rgba(58,110,90,.4)'}} }
     }
@@ -680,7 +680,7 @@ function renderTrends() {
     type:'line',
     data:{ labels:activeDates, datasets:trendDatasets },
     options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{ legend:{position:'bottom',labels:{color:'#eeeeee',font:{family:'Space Mono',size:9},boxWidth:10,padding:10}}, tooltip:{...TIP(),callbacks:{label:c=>` ${c.dataset.label}: ${c.raw!==null?c.raw+'%':'N/A'}`}} },
+      plugins:{ legend:{position:'bottom',labels:{color:'#eeeeee',font:{family:'Outfit',size:9},boxWidth:10,padding:10}}, tooltip:{...TIP(),callbacks:{label:c=>` ${c.dataset.label}: ${c.raw!==null?c.raw+'%':'N/A'}`}} },
       scales:{ x:XS(), y:{...YS(),min:trendMin,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}} }
     }
   });
@@ -707,7 +707,7 @@ function renderTrends() {
       { label:'Needs Work <90%',    data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>0&&p.confidence_pct<90).length),  backgroundColor:'rgba(176,80,64,.75)',  borderColor:'#B05040', borderWidth:1 },
     ]},
     options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{position:'bottom',labels:{color:'#eeeeee',font:{family:'Space Mono',size:9},boxWidth:10,padding:8}}, tooltip:TIP() },
+      plugins:{ legend:{position:'bottom',labels:{color:'#eeeeee',font:{family:'Outfit',size:9},boxWidth:10,padding:8}}, tooltip:TIP() },
       scales:{ x:{stacked:true,...XS()}, y:{stacked:true,...YS(),ticks:{...YS().ticks,stepSize:1}} }
     }
   });
@@ -815,7 +815,7 @@ function renderJobDetail() {
       plugins: {
         legend: { display: false },
         tooltip: { ...TIP(), callbacks: { label: c => ` ${c.raw}%` } },
-        subtitle: { display: true, text: ['■ Irrigation  ■ Drainage  ■ Golf'], color: ['#eeeeee'], font: { family: 'Space Mono', size: 9 }, padding: { bottom: 6 } }
+        subtitle: { display: true, text: ['■ Irrigation  ■ Drainage  ■ Golf'], color: ['#eeeeee'], font: { family: 'Outfit', size: 9 }, padding: { bottom: 6 } }
       },
       scales: { x: { ...YS(), min: 0, max: 100, ticks: { ...YS().ticks, callback: v => v+'%' } }, y: { ticks: { color: '#eeeeee', font: { size: 11 } }, grid: { color: 'rgba(33,41,61,.4)' } } }
     }
@@ -839,7 +839,7 @@ function renderJobDetail() {
     data: { labels: allDates, datasets: trendDatasets },
     options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { position: 'bottom', labels: { color: '#eeeeee', font: { family: 'Space Mono', size: 9 }, boxWidth: 10, padding: 10 } },
+        legend: { position: 'bottom', labels: { color: '#eeeeee', font: { family: 'Outfit', size: 9 }, boxWidth: 10, padding: 10 } },
         tooltip: { ...TIP(), callbacks: { label: c => ` ${c.dataset.label}: ${c.raw !== null ? c.raw+'%' : 'N/A'}` } }
       },
       scales: { x: XS(), y: { ...YS(), min: trendMin, max: 100, ticks: { ...YS().ticks, callback: v => v+'%' } } }
@@ -857,9 +857,9 @@ function switchTab(tab, btn) {
 // ══════════════════════════════════════════
 //  CHART HELPERS
 // ══════════════════════════════════════════
-function TIP() { return {backgroundColor:'#161b27',borderColor:'#21293d',borderWidth:1,titleFont:{family:'Space Mono',size:10},bodyColor:'#4e6280',titleColor:'#e2e8f0'}; }
-function XS()  { return {ticks:{color:'#eeeeee',font:{family:'Space Mono',size:9}},grid:{color:'rgba(58,110,90,.5)'}}; }
-function YS()  { return {ticks:{color:'#eeeeee',font:{family:'Space Mono',size:9}},grid:{color:'rgba(58,110,90,.5)'}}; }
+function TIP() { return {backgroundColor:'#161b27',borderColor:'#21293d',borderWidth:1,titleFont:{family:'Outfit',size:10},bodyColor:'#4e6280',titleColor:'#e2e8f0'}; }
+function XS()  { return {ticks:{color:'#eeeeee',font:{family:'Outfit',size:9}},grid:{color:'rgba(58,110,90,.5)'}}; }
+function YS()  { return {ticks:{color:'#eeeeee',font:{family:'Outfit',size:9}},grid:{color:'rgba(58,110,90,.5)'}}; }
 function sn(n) { return n.length>26?n.slice(0,24)+'…':n; }
 function esc(p){ return JSON.stringify(p).replace(/"/g,'&quot;'); }
 function mb(v) { return `<div class="mbar"><div class="mbar-bg"><div class="mbar-fill" style="width:${v}%;background:${sc(v)}"></div></div><div class="mbar-lbl">${v}%</div></div>`; }
