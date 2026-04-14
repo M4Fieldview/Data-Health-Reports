@@ -561,9 +561,9 @@ function buildCatChart(pfx, ps) {
       plugins:{
         legend:{display:false},
         tooltip:{...TIP(),callbacks:{label:c=>` ${c.raw.toFixed(1)}%`}},
-        subtitle:{display:true,text:['■ Irrigation  ■ Drainage  ■ Golf'],color:['#80A090'],font:{family:'Space Mono',size:9},padding:{bottom:6}}
+        subtitle:{display:true,text:['■ Irrigation  ■ Drainage  ■ Golf'],color:['#eeeeee'],font:{family:'Space Mono',size:9},padding:{bottom:6}}
       },
-      scales:{ x:{...YS(),min:0,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}}, y:{ticks:{color:'#80A090',font:{size:10}},grid:{color:'rgba(58,110,90,.4)'}} }
+      scales:{ x:{...YS(),min:0,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}}, y:{ticks:{color:'#eeeeee',font:{size:10}},grid:{color:'rgba(58,110,90,.4)'}} }
     }
   });
 }
@@ -679,7 +679,7 @@ function renderTrends() {
     type:'line',
     data:{ labels:activeDates, datasets:trendDatasets },
     options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{ legend:{position:'bottom',labels:{color:'#80A090',font:{family:'Space Mono',size:9},boxWidth:10,padding:10}}, tooltip:{...TIP(),callbacks:{label:c=>` ${c.dataset.label}: ${c.raw!==null?c.raw+'%':'N/A'}`}} },
+      plugins:{ legend:{position:'bottom',labels:{color:'#eeeeee',font:{family:'Space Mono',size:9},boxWidth:10,padding:10}}, tooltip:{...TIP(),callbacks:{label:c=>` ${c.dataset.label}: ${c.raw!==null?c.raw+'%':'N/A'}`}} },
       scales:{ x:XS(), y:{...YS(),min:trendMin,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}} }
     }
   });
@@ -706,7 +706,7 @@ function renderTrends() {
       { label:'Needs Work <90%',    data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>0&&p.confidence_pct<90).length),  backgroundColor:'rgba(176,80,64,.75)',  borderColor:'#B05040', borderWidth:1 },
     ]},
     options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{position:'bottom',labels:{color:'#80A090',font:{family:'Space Mono',size:9},boxWidth:10,padding:8}}, tooltip:TIP() },
+      plugins:{ legend:{position:'bottom',labels:{color:'#eeeeee',font:{family:'Space Mono',size:9},boxWidth:10,padding:8}}, tooltip:TIP() },
       scales:{ x:{stacked:true,...XS()}, y:{stacked:true,...YS(),ticks:{...YS().ticks,stepSize:1}} }
     }
   });
