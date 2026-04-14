@@ -524,13 +524,15 @@ function buildBarChart(pfx, ps) {
   const id = pfx+'-bar';
   if(CH[id]) CH[id].destroy();
   const sorted = [...ps].sort((a,b)=>b.confidence_pct-a.confidence_pct);
+  const vals = sorted.map(p=>p.confidence_pct).filter(v=>v>0);
+  const minVal = vals.length ? Math.max(0, Math.floor(Math.min(...vals) - 10)) : 0;
   CH[id] = new Chart(document.getElementById(id), {
     type:'bar',
     data:{ labels:sorted.map(p=>sn(p.name)), datasets:[{ data:sorted.map(p=>p.confidence_pct), backgroundColor:sorted.map(p=>sc(p.confidence_pct)+'bb'), borderColor:sorted.map(p=>sc(p.confidence_pct)), borderWidth:1, borderRadius:4 }] },
     options:{ responsive:true, maintainAspectRatio:false,
       onClick:(e,els)=>{ if(els.length) openPanel(sorted[els[0].index]); },
       plugins:{ legend:{display:false}, tooltip:TIP() },
-      scales:{ x:XS(), y:{...YS(),min:0,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}} }
+      scales:{ x:XS(), y:{...YS(),min:minVal,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}} }
     }
   });
 }
@@ -555,6 +557,7 @@ function buildCatChart(pfx, ps) {
   if(CH[id]) CH[id].destroy();
   const act = ps.filter(p=>p.confidence_pct>0);
   const avgs = CAT_SYSTEMS.map(({label})=>{ const r=act.filter(p=>p.categories[label]>0); return r.length?+(r.reduce((s,p)=>s+p.categories[label],0)/r.length).toFixed(1):0; });
+  const catMin = Math.max(0, Math.floor(Math.min(...avgs.filter(v=>v>0)) - 10));
   CH[id] = new Chart(document.getElementById(id), {
     type:'bar',
     data:{ labels:CAT_SYSTEMS.map(c=>c.label), datasets:[{ data:avgs, backgroundColor:CAT_SYSTEMS.map(c=>c.color+'55'), borderColor:CAT_SYSTEMS.map(c=>c.color), borderWidth:1, borderRadius:3 }] },
@@ -564,7 +567,7 @@ function buildCatChart(pfx, ps) {
         tooltip:{...TIP(),callbacks:{label:c=>` ${c.raw.toFixed(1)}%`}},
         subtitle:{display:true,text:['■ Irrigation  ■ Drainage  ■ Golf'],color:['#eeeeee'],font:{family:'Outfit',size:14},padding:{bottom:6}}
       },
-      scales:{ x:{...YS(),min:0,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}}, y:{ticks:{color:'#eeeeee',font:{size:15}},grid:{color:'rgba(58,110,90,.4)'}} }
+      scales:{ x:{...YS(),min:catMin,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}}, y:{ticks:{color:'#eeeeee',font:{size:15}},grid:{color:'rgba(58,110,90,.4)'}} }
     }
   });
 }
@@ -686,15 +689,17 @@ function renderTrends() {
   });
 
   if(CH.trendAvg) CH.trendAvg.destroy();
+  const avgData = activeDates.map(d=>{
+    const ps=(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>0);
+    return ps.length?ps.reduce((s,p)=>s+p.confidence_pct,0)/ps.length:null;
+  });
+  const avgMin = Math.max(0, Math.floor(Math.min(...avgData.filter(v=>v!==null)) - 10));
   CH.trendAvg = new Chart(document.getElementById('trendAvg'), {
     type:'line',
-    data:{ labels:activeDates, datasets:[{ label:'Avg Confidence', data:activeDates.map(d=>{
-      const ps=(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>0);
-      return ps.length?ps.reduce((s,p)=>s+p.confidence_pct,0)/ps.length:null;
-    }), borderColor:'#52C48C', backgroundColor:'rgba(82,196,140,.1)', tension:.3, pointRadius:5, fill:true }]},
+    data:{ labels:activeDates, datasets:[{ label:'Avg Confidence', data:avgData, borderColor:'#52C48C', backgroundColor:'rgba(82,196,140,.1)', tension:.3, pointRadius:5, fill:true }]},
     options:{ responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{...TIP(),callbacks:{label:c=>` Avg: ${c.raw!==null?c.raw.toFixed(1)+'%':'N/A'}`}} },
-      scales:{ x:XS(), y:{...YS(),min:0,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}} }
+      scales:{ x:XS(), y:{...YS(),min:avgMin,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}} }
     }
   });
 
@@ -817,7 +822,7 @@ function renderJobDetail() {
         tooltip: { ...TIP(), callbacks: { label: c => ` ${c.raw}%` } },
         subtitle: { display: true, text: ['■ Irrigation  ■ Drainage  ■ Golf'], color: ['#eeeeee'], font: { family: 'Outfit', size: 9 }, padding: { bottom: 6 } }
       },
-      scales: { x: { ...YS(), min: 0, max: 100, ticks: { ...YS().ticks, callback: v => v+'%' } }, y: { ticks: { color: '#eeeeee', font: { size: 11 } }, grid: { color: 'rgba(33,41,61,.4)' } } }
+      scales: { x: { ...YS(), min: Math.max(0, Math.floor(Math.min(...vals.filter(v=>v>0)) - 10)), max: 100, ticks: { ...YS().ticks, callback: v => v+'%' } }, y: { ticks: { color: '#eeeeee', font: { size: 11 } }, grid: { color: 'rgba(33,41,61,.4)' } } }
     }
   });
 
