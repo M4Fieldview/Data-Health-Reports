@@ -624,7 +624,7 @@ function buildTable(pfx, ps) {
     return `<tr onclick="openPanel(${esc(p)})">
       <td><span style="font-family:var(--mono);font-size:15px;color:var(--muted2)">${p.run_date}</span></td>
       <td><div class="pname">${p.name}</div></td>
-      <td><span class="sbadge ${scls(p.confidence_pct)}">${p.confidence_pct}%</span></td>
+      <td>${p.confidence_pct ? `<span class="sbadge ${scls(p.confidence_pct)}">${p.confidence_pct}%</span>` : `<span style="font-family:var(--mono);font-size:13px;color:var(--muted)">NA</span>`}</td>
       <td>${mb(p.irrigation_pct)}</td><td>${mb(p.drainage_pct)}</td><td>${mb(p.golf_pct)}</td>
       <td style="font-family:var(--mono);font-size:15px">${p.total_earned.toLocaleString(undefined,{maximumFractionDigits:1})} / ${p.total_possible.toLocaleString(undefined,{maximumFractionDigits:1})}</td>
       <td style="font-size:16px;color:var(--muted2)">${cols.slice(0,2).join(', ')}${cols.length>2?' +'+(cols.length-2):''}</td>
@@ -862,7 +862,7 @@ function XS()  { return {ticks:{color:'#eeeeee',font:{family:'Outfit',size:14}},
 function YS()  { return {ticks:{color:'#eeeeee',font:{family:'Outfit',size:14}},grid:{color:'rgba(58,110,90,.5)'}}; }
 function sn(n) { return n.length>26?n.slice(0,24)+'…':n; }
 function esc(p){ return JSON.stringify(p).replace(/"/g,'&quot;'); }
-function mb(v) { return `<div class="mbar"><div class="mbar-bg"><div class="mbar-fill" style="width:${v}%;background:${sc(v)}"></div></div><div class="mbar-lbl">${v}%</div></div>`; }
+function mb(v) { if(!v) return `<span style="font-family:var(--mono);font-size:13px;color:var(--muted)">NA</span>`; return `<div class="mbar"><div class="mbar-bg"><div class="mbar-fill" style="width:${v}%;background:${sc(v)}"></div></div><div class="mbar-lbl">${v}%</div></div>`; }
 
 // ══════════════════════════════════════════
 //  INIT — auto-load on page open
