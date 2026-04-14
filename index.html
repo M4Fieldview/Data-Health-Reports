@@ -581,8 +581,9 @@ function buildProblemProjects(pfx, ps) {
   el.innerHTML = `
     <div class="slabel" style="color:var(--red)">Needs Attention — ${problems.length} project${problems.length > 1 ? 's' : ''} below 90%</div>
     <div class="problem-grid">${problems.map((p, i) => {
-      const cats = Object.entries(p.categories).filter(([, v]) => v > 0);
-      const worstCat = cats.length ? cats.sort((a, b) => a[1] - b[1])[0] : null;
+      const weakCats = Object.entries(p.categories)
+        .filter(([, v]) => v > 0 && v < 90)
+        .sort((a, b) => a[1] - b[1]);
       const sys = [
         p.irrigation_pct > 0 ? `<div class="problem-bar-row"><span class="pb-label">Irr</span>${mb(p.irrigation_pct)}</div>` : '',
         p.drainage_pct   > 0 ? `<div class="problem-bar-row"><span class="pb-label">Drn</span>${mb(p.drainage_pct)}</div>`   : '',
@@ -593,7 +594,7 @@ function buildProblemProjects(pfx, ps) {
         <div class="problem-name">${p.name}</div>
         <div><span class="sbadge r">${p.confidence_pct}%</span></div>
         ${sys ? `<div class="problem-bars">${sys}</div>` : ''}
-        ${worstCat ? `<div class="problem-weak"><span style="color:var(--muted)">Weakest: </span><span style="color:var(--red);font-family:var(--mono);font-size:10px">${worstCat[0]} — ${worstCat[1]}%</span></div>` : ''}
+        ${weakCats.length ? `<div class="problem-weak"><span style="color:var(--muted)">Weak features: </span><span style="color:var(--red);font-family:var(--mono);font-size:10px">${weakCats.map(([n, v]) => `${n} ${v}%`).join(' · ')}</span></div>` : ''}
       </div>`;
     }).join('')}</div>`;
 }
