@@ -82,8 +82,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .tbl tr:last-child td{border-bottom:none;}
 .tbl tr:hover td{background:rgba(82,196,140,.02);cursor:pointer;}
 .pname{font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;}
-.sbadge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(58,155,172,.13);color:var(--blue);}
-.sbadge.g,.sbadge.y,.sbadge.r,.sbadge.z{background:rgba(58,155,172,.13);color:var(--blue);}
+.sbadge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;}
+.sbadge.g{background:rgba(82,196,140,.12);color:var(--green);}
+.sbadge.y{background:rgba(200,150,58,.12);color:var(--yellow);}
+.sbadge.r{background:rgba(176,80,64,.12);color:var(--red);}
+.sbadge.z{background:rgba(74,104,88,.12);color:var(--muted);}
 .mbar{display:flex;align-items:center;gap:5px;min-width:95px;}
 .mbar-bg{flex:1;height:4px;background:var(--border);border-radius:10px;overflow:hidden;}
 .mbar-fill{height:100%;border-radius:10px;}
@@ -510,10 +513,10 @@ function buildCards(pfx, ps) {
   const ac  = act.filter(p=>p.confidence_pct>=90&&p.confidence_pct<98).length;
   const nw  = act.filter(p=>p.confidence_pct<90).length;
   document.getElementById(pfx+'-cards').innerHTML = `
-    <div class="card b"><div class="card-label">Avg Confidence</div><div class="card-val">${avg.toFixed(1)}%</div><div class="card-sub">${act.length} active projects</div></div>
-    <div class="card b"><div class="card-label">Excellent ≥98%</div><div class="card-val">${ex}</div><div class="card-sub">projects</div></div>
-    <div class="card b"><div class="card-label">Acceptable 90–97%</div><div class="card-val">${ac}</div><div class="card-sub">projects</div></div>
-    <div class="card b"><div class="card-label">Needs Work &lt;90%</div><div class="card-val">${nw}</div><div class="card-sub">projects</div></div>`;
+    <div class="card ${scls(avg)}"><div class="card-label">Avg Confidence</div><div class="card-val">${avg.toFixed(1)}%</div><div class="card-sub">${act.length} active projects</div></div>
+    <div class="card g"><div class="card-label">Excellent ≥98%</div><div class="card-val">${ex}</div><div class="card-sub">projects</div></div>
+    <div class="card y"><div class="card-label">Acceptable 90–97%</div><div class="card-val">${ac}</div><div class="card-sub">projects</div></div>
+    <div class="card r"><div class="card-label">Needs Work &lt;90%</div><div class="card-val">${nw}</div><div class="card-sub">projects</div></div>`;
 }
 
 function buildBarChart(pfx, ps) {
@@ -779,10 +782,10 @@ function renderJobDetail() {
 
   // Cards
   document.getElementById('jd-cards').innerHTML = `
-    <div class="card b"><div class="card-label">Confidence</div><div class="card-val">${p.confidence_pct}%</div><div class="card-sub">${p.total_earned.toLocaleString(undefined,{maximumFractionDigits:1})} / ${p.total_possible.toLocaleString(undefined,{maximumFractionDigits:1})} pts</div></div>
-    <div class="card b"><div class="card-label">Irrigation</div><div class="card-val">${p.irrigation_pct}%</div><div class="card-sub">system score</div></div>
-    <div class="card b"><div class="card-label">Drainage</div><div class="card-val">${p.drainage_pct}%</div><div class="card-sub">system score</div></div>
-    <div class="card b"><div class="card-label">Golf</div><div class="card-val">${p.golf_pct}%</div><div class="card-sub">system score</div></div>`;
+    <div class="card ${scls(p.confidence_pct)}"><div class="card-label">Confidence</div><div class="card-val">${p.confidence_pct}%</div><div class="card-sub">${p.total_earned.toLocaleString(undefined,{maximumFractionDigits:1})} / ${p.total_possible.toLocaleString(undefined,{maximumFractionDigits:1})} pts</div></div>
+    <div class="card ${scls(p.irrigation_pct)}"><div class="card-label">Irrigation</div><div class="card-val">${p.irrigation_pct}%</div><div class="card-sub">system score</div></div>
+    <div class="card ${scls(p.drainage_pct)}"><div class="card-label">Drainage</div><div class="card-val">${p.drainage_pct}%</div><div class="card-sub">system score</div></div>
+    <div class="card ${scls(p.golf_pct)}"><div class="card-label">Golf</div><div class="card-val">${p.golf_pct}%</div><div class="card-sub">system score</div></div>`;
 
   // Filter by system
   const sysFilt = document.getElementById('jd-system').value;
