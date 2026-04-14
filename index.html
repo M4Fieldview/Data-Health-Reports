@@ -755,7 +755,18 @@ function buildJobDetail() {
 
   const sel = document.getElementById('jd-select');
   const prevName = sel.value;
-  sel.innerHTML = [...allProjects.keys()].filter(n => !/staking/i.test(n)).sort().map(n => `<option value="${n}">${n}</option>`).join('');
+  const jdNames = [...allProjects.keys()].filter(n => !/staking/i.test(n));
+  jdNames.sort((a, b) => {
+    const scoreA = [...(allProjects.get(a)||[])].reverse().reduce((s, d) => { const p = (RUNS[d]||[]).find(x=>x.name===a); return s===null&&p ? p.confidence_pct : s; }, null) ?? 100;
+    const scoreB = [...(allProjects.get(b)||[])].reverse().reduce((s, d) => { const p = (RUNS[d]||[]).find(x=>x.name===b); return s===null&&p ? p.confidence_pct : s; }, null) ?? 100;
+    return scoreA - scoreB;
+  });
+  sel.innerHTML = jdNames.map((n, i) => {
+    const latestDate = [...(allProjects.get(n)||[])].sort().reverse()[0];
+    const p = latestDate ? (RUNS[latestDate]||[]).find(x=>x.name===n) : null;
+    const pct = p ? ` (${p.confidence_pct}%)` : '';
+    return `<option value="${n}">${i+1}. ${n}${pct}</option>`;
+  }).join('');
   if (prevName && allProjects.has(prevName)) sel.value = prevName;
 
   populateJobDates();
