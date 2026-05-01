@@ -114,7 +114,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:190;}
 .overlay.show{display:block;}
-.panel{position:fixed;top:0;right:0;width:450px;height:100vh;background:var(--surface);border-left:1px solid var(--border);z-index:200;overflow-y:auto;transform:translateX(100%);transition:transform .3s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 40px rgba(0,0,0,.4);}
+.panel{position:fixed;top:0;right:0;width:640px;height:100vh;background:var(--surface);border-left:1px solid var(--border);z-index:200;overflow-y:auto;transform:translateX(100%);transition:transform .3s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 40px rgba(0,0,0,.4);}
 .panel.open{transform:translateX(0);}
 .panel-head{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;position:sticky;top:0;background:var(--surface);z-index:5;}
 .panel-head h3{font-size:18px;font-weight:600;max-width:350px;}
@@ -449,9 +449,21 @@ function parseRow(row) {
       'Bunkers':          g('bunkers_pct'),
     },
     counts: {
-      heads_total:    parseInt(row['heads_total']||0)||0,
-      heads_complete: parseInt(row['heads_complete']||0)||0,
-      collectors:     String(row['collectors'] || ''),
+      collectors: String(row['collectors'] || ''),
+    },
+    catCounts: {
+      'Heads':            { total: parseInt(row['heads_total']||0)||0,              incomplete: parseInt(row['heads_incomplete']||0)||0,              unit: '' },
+      'Quick Couplers':   { total: parseInt(row['quick_total']||0)||0,              incomplete: parseInt(row['quick_incomplete']||0)||0,              unit: '' },
+      'Isolation Valves': { total: parseInt(row['iso_total']||0)||0,                incomplete: parseInt(row['iso_incomplete']||0)||0,                unit: '' },
+      'Lateral Valves':   { total: parseInt(row['lateral_valve_total']||0)||0,      incomplete: parseInt(row['lateral_valve_incomplete']||0)||0,      unit: '' },
+      'Lateral Pipe':     { total: parseFloat(row['lateral_ft_total']||0)||0,       incomplete: parseFloat(row['lateral_ft_incomplete']||0)||0,       unit: 'ft' },
+      'Mainline':         { total: parseFloat(row['mainline_ft_total']||0)||0,      incomplete: parseFloat(row['mainline_ft_incomplete']||0)||0,      unit: 'ft' },
+      'Basins':           { total: parseInt(row['basins_total']||0)||0,             incomplete: parseInt(row['basins_incomplete']||0)||0,             unit: '' },
+      'Perf Drainage':    { total: parseFloat(row['perf_ft_total']||0)||0,          incomplete: parseFloat(row['perf_ft_incomplete']||0)||0,          unit: 'ft' },
+      'Solid Drainage':   { total: parseFloat(row['solid_ft_total']||0)||0,         incomplete: parseFloat(row['solid_ft_incomplete']||0)||0,         unit: 'ft' },
+      'Greens':           { total: parseInt(row['greens_features_total']||0)||0,    incomplete: parseInt(row['greens_incomplete']||0)||0,             unit: '' },
+      'Tees':             { total: parseInt(row['tees_features_total']||0)||0,      incomplete: parseInt(row['tees_incomplete']||0)||0,               unit: '' },
+      'Bunkers':          { total: parseInt(row['bunkers_features_total']||0)||0,   incomplete: parseInt(row['bunkers_incomplete']||0)||0,            unit: '' },
     }
   };
 }
@@ -722,9 +734,24 @@ function openPanel(p) {
   document.getElementById('pn-meta').textContent = `Run: ${p.run_date} · ${p.type}`;
   document.getElementById('pn-score').textContent = p.confidence_pct+'%';
   document.getElementById('pn-score').style.color = sc(p.confidence_pct);
-  document.getElementById('pn-cats').innerHTML = Object.entries(p.categories).map(([n,v])=>
-    `<div class="cat-row"><span class="cat-name">${n}</span><div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div><span class="cat-pct" style="color:${sc(v)}">${v}%</span></div>`
-  ).join('');
+  const catRows = Object.entries(p.categories).map(([n,v])=>{
+    const cc         = p.catCounts && p.catCounts[n];
+    const total      = cc ? cc.total      : 0;
+    const incomplete = cc ? cc.incomplete : 0;
+    const unit       = cc ? cc.unit       : '';
+    if (total === 0 && v === 0) return '';
+    const wrongCol = total > 0
+      ? `<span style="font-family:var(--mono);font-size:13px;min-width:80px;text-align:right;padding-right:10px;color:${incomplete > 0 ? 'var(--red)' : 'var(--green)'};flex-shrink:0">${incomplete > 0 ? '−'+incomplete.toLocaleString()+(unit ? ' '+unit : '') : '✓'}</span>`
+      : `<span style="min-width:80px;flex-shrink:0"></span>`;
+    return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div><span class="cat-pct" style="color:${sc(v)}">${v}%</span></div>`;
+  }).join('');
+  const catHeader = `<div style="display:flex;align-items:center;padding:4px 0 6px;border-bottom:1px solid var(--border);margin-bottom:2px">
+    <span style="flex:1;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Feature</span>
+    <span style="min-width:80px;flex-shrink:0;text-align:right;padding-right:10px;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Info Missing</span>
+    <span style="flex:1.2;margin:0 10px;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)"></span>
+    <span style="min-width:36px;text-align:right;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Score</span>
+  </div>`;
+  document.getElementById('pn-cats').innerHTML = catHeader + catRows;
   const cols=(p.counts.collectors||'').split('|').filter(Boolean);
   document.getElementById('pn-cols').innerHTML = cols.map(c=>`<div class="chip">${c}</div>`).join('');
   document.getElementById('pn-pts').innerHTML = `<span style="color:${sc(p.confidence_pct)}">${p.total_earned.toLocaleString()}</span><span style="color:var(--muted)"> / ${p.total_possible.toLocaleString()} pts</span>${p.total_possible>0?`<span style="color:var(--muted);margin-left:6px">(${(p.total_earned/p.total_possible*100).toFixed(1)}%)</span>`:''}`;
