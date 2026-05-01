@@ -390,7 +390,7 @@ async function loadData() {
     });
 
     const ds = dates();
-    document.getElementById('lastRun').textContent = ds.length ? ds[ds.length-1] : '—';
+    document.getElementById('lastRun').textContent = ds.length ? fmtDate(ds[ds.length-1]) : '—';
     document.getElementById('runCount').textContent = ds.length;
 
     setStatus('live', 'Live');
@@ -648,7 +648,7 @@ function buildTable(pfx, ps) {
   document.getElementById(pfx+'-tbody').innerHTML = s.map(p=>{
     const cols=(p.counts.collectors||'').split('|').filter(Boolean);
     return `<tr onclick="openPanel(${esc(p)})">
-      <td><span style="font-family:var(--mono);font-size:15px;color:var(--muted2)">${p.run_date}</span></td>
+      <td><span style="font-family:var(--mono);font-size:15px;color:var(--muted2)">${fmtDate(p.run_date)}</span></td>
       <td><div class="pname">${p.name}</div></td>
       <td>${p.confidence_pct ? `<span class="sbadge ${scls(p.confidence_pct)}">${p.confidence_pct}%</span>` : `<span style="font-family:var(--mono);font-size:13px;color:var(--muted)">NA</span>`}</td>
       <td>${mb(p.irrigation_pct)}</td><td>${mb(p.drainage_pct)}</td><td>${mb(p.golf_pct)}</td>
@@ -679,7 +679,7 @@ function renderTrends() {
 
   const prevSel = new Set([...document.querySelectorAll('.date-tag.sel')].map(el=>el.dataset.d));
   document.getElementById('dateTags').innerHTML = ds.map(d=>
-    `<span class="date-tag ${prevSel.size===0||prevSel.has(d)?'sel':''}" data-d="${d}" onclick="this.classList.toggle('sel');renderTrends()">${d}</span>`
+    `<span class="date-tag ${prevSel.size===0||prevSel.has(d)?'sel':''}" data-d="${d}" onclick="this.classList.toggle('sel');renderTrends()">${fmtDate(d)}</span>`
   ).join('');
 
   const activeDates = ds.filter(d=>{ const el=document.querySelector(`.date-tag[data-d="${d}"]`); return !el||el.classList.contains('sel'); });
@@ -703,7 +703,7 @@ function renderTrends() {
   const avgMin = Math.max(0, Math.floor(Math.min(...avgData.filter(v=>v!==null)) - 10));
   CH.trendAvg = new Chart(document.getElementById('trendAvg'), {
     type:'line',
-    data:{ labels:activeDates, datasets:[{ label:'Avg Confidence', data:avgData, borderColor:'#52C48C', backgroundColor:'rgba(82,196,140,.1)', tension:.3, pointRadius:5, fill:true }]},
+    data:{ labels:activeDates.map(fmtDate), datasets:[{ label:'Avg Confidence', data:avgData, borderColor:'#52C48C', backgroundColor:'rgba(82,196,140,.1)', tension:.3, pointRadius:5, fill:true }]},
     options:{ responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false}, tooltip:{...TIP(),callbacks:{label:c=>` Avg: ${c.raw!==null?c.raw.toFixed(1)+'%':'N/A'}`}} },
       scales:{ x:XS(), y:{...YS(),min:avgMin,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}} }
@@ -713,7 +713,7 @@ function renderTrends() {
   if(CH.trendStack) CH.trendStack.destroy();
   CH.trendStack = new Chart(document.getElementById('trendStack'), {
     type:'bar',
-    data:{ labels:activeDates, datasets:[
+    data:{ labels:activeDates.map(fmtDate), datasets:[
       { label:'Excellent ≥98%',     data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>=98).length),              backgroundColor:'rgba(82,196,140,.75)',  borderColor:'#52C48C', borderWidth:1 },
       { label:'Acceptable 90–97%',  data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>=90&&p.confidence_pct<98).length), backgroundColor:'rgba(200,150,58,.75)', borderColor:'#C8963A', borderWidth:1 },
       { label:'Needs Work <90%',    data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>0&&p.confidence_pct<90).length),  backgroundColor:'rgba(176,80,64,.75)',  borderColor:'#B05040', borderWidth:1 },
@@ -731,7 +731,7 @@ function renderTrends() {
 function openPanel(p) {
   if(typeof p==='string') p=JSON.parse(p);
   document.getElementById('pn-name').textContent = p.name;
-  document.getElementById('pn-meta').textContent = `Run: ${p.run_date} · ${p.type}`;
+  document.getElementById('pn-meta').textContent = `Run: ${fmtDate(p.run_date)} · ${p.type}`;
   document.getElementById('pn-score').textContent = p.confidence_pct+'%';
   document.getElementById('pn-score').style.color = sc(p.confidence_pct);
   const catRows = Object.entries(p.categories).map(([n,v])=>{
@@ -806,7 +806,7 @@ function populateJobDates() {
   const ds = dates().filter(d => (RUNS[d]||[]).some(p => p.name === name)).sort().reverse();
   const dateSel = document.getElementById('jd-date');
   const prev = dateSel.value;
-  dateSel.innerHTML = ds.map(d => `<option value="${d}">${d}</option>`).join('');
+  dateSel.innerHTML = ds.map(d => `<option value="${d}">${fmtDate(d)}</option>`).join('');
   if (prev && ds.includes(prev)) dateSel.value = prev;
 }
 
@@ -863,7 +863,7 @@ function renderJobDetail() {
   const trendMin = trendVals.length ? Math.max(0, Math.floor(Math.min(...trendVals) - 10)) : 0;
   CH['jd-trend'] = new Chart(document.getElementById('jd-trend'), {
     type: 'line',
-    data: { labels: allDates, datasets: trendDatasets },
+    data: { labels: allDates.map(fmtDate), datasets: trendDatasets },
     options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { position: 'bottom', labels: { color: '#eeeeee', font: { family: 'Outfit', size: 9 }, boxWidth: 10, padding: 10 } },
@@ -898,7 +898,7 @@ function renderTrendHeat(allNames, activeDates) {
     return latest(a) - latest(b);
   });
 
-  const dateHeaders = activeDates.map(d => `<th class="heat-date-th">${d}</th>`).join('');
+  const dateHeaders = activeDates.map(d => `<th class="heat-date-th">${fmtDate(d)}</th>`).join('');
 
   const rows = sorted.map(name => {
     const cells = activeDates.map(d => {
@@ -926,6 +926,7 @@ function TIP() { return {backgroundColor:'#161b27',borderColor:'#21293d',borderW
 function XS()  { return {ticks:{color:'#eeeeee',font:{family:'Outfit',size:14}},grid:{color:'rgba(58,110,90,.5)'}}; }
 function YS()  { return {ticks:{color:'#eeeeee',font:{family:'Outfit',size:14}},grid:{color:'rgba(58,110,90,.5)'}}; }
 function sn(n) { return n.length>26?n.slice(0,24)+'…':n; }
+function fmtDate(d) { if(!d||d.length!==10) return d; return d.slice(5,7)+'-'+d.slice(8,10)+'-'+d.slice(0,4); }
 function esc(p){ return JSON.stringify(p).replace(/"/g,'&quot;'); }
 function mb(v) { if(!v) return `<span style="font-family:var(--mono);font-size:13px;color:var(--muted)">NA</span>`; return `<div class="mbar"><div class="mbar-bg"><div class="mbar-fill" style="width:${v}%;background:${sc(v)}"></div></div><div class="mbar-lbl">${v}%</div></div>`; }
 
