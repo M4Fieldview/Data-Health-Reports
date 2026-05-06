@@ -323,7 +323,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
     <div class="slabel">Confidence % Over Time — per project</div>
     <div class="cc" style="margin-bottom:12px"><div class="heat-wrap"><div id="trendHeat"></div></div></div>
     <div class="chart-grid">
-      <div class="cc"><div class="cc-title">Average Confidence by Run Date</div><div style="height:250px"><canvas id="trendAvg"></canvas></div></div>
+      <div class="cc"><div class="cc-title">Weighted Avg Confidence by Run Date</div><div style="height:250px"><canvas id="trendAvg"></canvas></div></div>
       <div class="cc"><div class="cc-title">Project Status Counts per Run Date</div><div style="height:250px"><canvas id="trendStack"></canvas></div></div>
     </div>
   </div>
@@ -539,12 +539,14 @@ function buildTab(pfx, type) {
 
 function buildCards(pfx, ps) {
   const act = ps.filter(p=>p.confidence_pct>0);
-  const avg = act.length ? act.reduce((s,p)=>s+p.confidence_pct,0)/act.length : 0;
+  const totE = act.reduce((s,p)=>s+(p.total_earned||0),0);
+  const totP = act.reduce((s,p)=>s+(p.total_possible||0),0);
+  const avg  = totP > 0 ? (totE / totP) * 100 : (act.length ? act.reduce((s,p)=>s+p.confidence_pct,0)/act.length : 0);
   const ex  = act.filter(p=>p.confidence_pct>=98).length;
   const ac  = act.filter(p=>p.confidence_pct>=90&&p.confidence_pct<98).length;
   const nw  = act.filter(p=>p.confidence_pct<90).length;
   document.getElementById(pfx+'-cards').innerHTML = `
-    <div class="card ${scls(avg)}"><div class="card-label">Avg Confidence</div><div class="card-val">${avg.toFixed(1)}%</div><div class="card-sub">${act.length} active projects</div></div>
+    <div class="card ${scls(avg)}"><div class="card-label">Wtd Avg Confidence</div><div class="card-val">${avg.toFixed(1)}%</div><div class="card-sub">${act.length} active projects</div></div>
     <div class="card g"><div class="card-label">Excellent ≥98%</div><div class="card-val">${ex}</div><div class="card-sub">projects</div></div>
     <div class="card y"><div class="card-label">Acceptable 90–97%</div><div class="card-val">${ac}</div><div class="card-sub">projects</div></div>
     <div class="card r"><div class="card-label">Needs Work &lt;90%</div><div class="card-val">${nw}</div><div class="card-sub">projects</div></div>`;
@@ -707,14 +709,17 @@ function renderTrends() {
   if(CH.trendAvg) CH.trendAvg.destroy();
   const avgData = activeDates.map(d=>{
     const ps=(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>0);
-    return ps.length?ps.reduce((s,p)=>s+p.confidence_pct,0)/ps.length:null;
+    if (!ps.length) return null;
+    const tE = ps.reduce((s,p)=>s+(p.total_earned||0),0);
+    const tP = ps.reduce((s,p)=>s+(p.total_possible||0),0);
+    return tP > 0 ? (tE / tP) * 100 : ps.reduce((s,p)=>s+p.confidence_pct,0)/ps.length;
   });
   const avgMin = Math.max(0, Math.floor(Math.min(...avgData.filter(v=>v!==null)) - 10));
   CH.trendAvg = new Chart(document.getElementById('trendAvg'), {
     type:'line',
-    data:{ labels:activeDates.map(fmtDate), datasets:[{ label:'Avg Confidence', data:avgData, borderColor:'#52C48C', backgroundColor:'rgba(82,196,140,.1)', tension:.3, pointRadius:5, fill:true }]},
+    data:{ labels:activeDates.map(fmtDate), datasets:[{ label:'Weighted Avg Confidence', data:avgData, borderColor:'#52C48C', backgroundColor:'rgba(82,196,140,.1)', tension:.3, pointRadius:5, fill:true }]},
     options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{...TIP(),callbacks:{label:c=>` Avg: ${c.raw!==null?c.raw.toFixed(1)+'%':'N/A'}`}} },
+      plugins:{ legend:{display:false}, tooltip:{...TIP(),callbacks:{label:c=>` Weighted Avg: ${c.raw!==null?c.raw.toFixed(1)+'%':'N/A'}`}} },
       scales:{ x:XS(), y:{...YS(),min:avgMin,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}} }
     }
   });
