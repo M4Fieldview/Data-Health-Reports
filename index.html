@@ -169,13 +169,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
   <div class="tab-nav">
     <button class="tab-btn active" onclick="switchTab('asbuilt',this)">As-Builts</button>
     <button class="tab-btn" onclick="switchTab('staking',this)">Staking</button>
-    <button class="tab-btn" onclick="switchTab('trends',this)">Week-over-Week Trends</button>
+    <button class="tab-btn" onclick="switchTab('trends',this)">Trends</button>
     <button class="tab-btn" onclick="switchTab('detail',this)">Job Detail</button>
   </div>
   <div class="header-meta">
     <div class="meta-badge"><span class="status-dot loading" id="statusDot"></span><span id="statusText">Connecting…</span></div>
     <div class="meta-badge">Last run: <b id="lastRun">—</b></div>
-    <div class="meta-badge"><b id="runCount">0</b> week(s)</div>
+    <div class="meta-badge"><b id="runCount">0</b> run(s)</div>
   </div>
 </div>
 
@@ -288,7 +288,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
     <div class="cards" id="jd-cards" style="margin-bottom:20px"></div>
     <div class="slabel">Component Breakdown — selected run date</div>
     <div class="chart-grid wide"><div class="cc"><div style="height:360px"><canvas id="jd-bar"></canvas></div></div></div>
-    <div class="slabel">Component % Week-over-Week</div>
+    <div class="slabel">Component % Over Time</div>
     <div class="cc" style="margin-bottom:12px"><div class="heat-wrap"><div id="jd-trend-heat"></div></div></div>
   </div>
 </div>
@@ -297,7 +297,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 <div class="page" id="page-trends">
   <div id="trend-loading" class="loading-state"><p>Loading data…</p></div>
   <div id="trend-empty" class="no-trend" style="display:none">
-    Need 2+ weekly runs to show trends.<br>New rows are picked up automatically each week.
+    Need 2+ runs to show trends.<br>New rows are picked up automatically each day.
   </div>
   <div id="trend-content" style="display:none">
     <div class="trend-controls">
@@ -310,8 +310,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
         </select>
       </div>
       <div>
-        <div class="clabel">Run Dates</div>
-        <div class="date-tags" id="dateTags"></div>
+        <div class="clabel">Date Range</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap" id="dateRangeBtns">
+          <button class="sort-btn" data-range="7"  onclick="setDateRange(7)">Last 7</button>
+          <button class="sort-btn" data-range="14" onclick="setDateRange(14)">Last 14</button>
+          <button class="sort-btn active" data-range="30" onclick="setDateRange(30)">Last 30</button>
+          <button class="sort-btn" data-range="60" onclick="setDateRange(60)">Last 60</button>
+          <button class="sort-btn" data-range="0"  onclick="setDateRange(0)">All</button>
+        </div>
       </div>
     </div>
     <div class="slabel">Confidence % Over Time — per project</div>
@@ -678,12 +684,14 @@ function renderTrends() {
   const filterType = document.getElementById('trendType').value;
   document.getElementById('trend-loading').style.display = 'none';
 
-  const prevSel = new Set([...document.querySelectorAll('.date-tag.sel')].map(el=>el.dataset.d));
-  document.getElementById('dateTags').innerHTML = ds.map(d=>
-    `<span class="date-tag ${prevSel.size===0||prevSel.has(d)?'sel':''}" data-d="${d}" onclick="this.classList.toggle('sel');renderTrends()">${fmtDate(d)}</span>`
-  ).join('');
-
-  const activeDates = ds.filter(d=>{ const el=document.querySelector(`.date-tag[data-d="${d}"]`); return !el||el.classList.contains('sel'); });
+  const activeDates = (() => {
+    const range = window._dateRange ?? 30;
+    if (!range) return ds;
+    const cutoff = new Date(ds[ds.length-1]);
+    cutoff.setDate(cutoff.getDate() - range + 1);
+    const cutStr = cutoff.toISOString().slice(0,10);
+    return ds.filter(d => d >= cutStr);
+  })();
   const emptyEl = document.getElementById('trend-empty');
   const contentEl = document.getElementById('trend-content');
 
@@ -927,6 +935,11 @@ function TIP() { return {backgroundColor:'#161b27',borderColor:'#21293d',borderW
 function XS()  { return {ticks:{color:'#eeeeee',font:{family:'Outfit',size:14}},grid:{color:'rgba(58,110,90,.5)'}}; }
 function YS()  { return {ticks:{color:'#eeeeee',font:{family:'Outfit',size:14}},grid:{color:'rgba(58,110,90,.5)'}}; }
 function sn(n) { return n.length>26?n.slice(0,24)+'…':n; }
+function setDateRange(n) {
+  window._dateRange = n;
+  document.querySelectorAll('#dateRangeBtns .sort-btn').forEach(b => b.classList.toggle('active', +b.dataset.range === n));
+  renderTrends();
+}
 function fmtDate(d) { if(!d||d.length!==10) return d; return d.slice(5,7)+'-'+d.slice(8,10)+'-'+d.slice(0,4); }
 function esc(p){ return JSON.stringify(p).replace(/"/g,'&quot;'); }
 function mb(v) { if(!v) return `<span style="font-family:var(--mono);font-size:13px;color:var(--muted)">NA</span>`; return `<div class="mbar"><div class="mbar-bg"><div class="mbar-fill" style="width:${v}%;background:${sc(v)}"></div></div><div class="mbar-lbl">${v}%</div></div>`; }
