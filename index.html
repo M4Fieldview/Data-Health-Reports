@@ -608,18 +608,47 @@ function buildCatChart(pfx, ps) {
 // ══════════════════════════════════════════
 //  PROBLEM PROJECTS
 // ══════════════════════════════════════════
+window._problemSort = window._problemSort || {};
+
+function setProblemSort(pfx, mode) {
+  window._problemSort[pfx] = mode;
+  // re-render using cached project list
+  const ps = (window._lastPs || {})[pfx];
+  if (ps) buildProblemProjects(pfx, ps);
+}
+
 function buildProblemProjects(pfx, ps) {
+  // cache project list for re-render on sort toggle
+  window._lastPs = window._lastPs || {};
+  window._lastPs[pfx] = ps;
+
+  const mode = window._problemSort[pfx] || 'pct';
   const el = document.getElementById(pfx+'-problems');
-  const problems = [...ps]
-    .filter(p => p.confidence_pct > 0 && p.confidence_pct < 90)
-    .sort((a, b) => a.confidence_pct - b.confidence_pct)
+  const candidates = [...ps].filter(p => p.confidence_pct > 0 && p.confidence_pct < 90);
+
+  if (!candidates.length) { el.innerHTML = ''; return; }
+
+  const problems = candidates
+    .sort((a, b) => {
+      if (mode === 'pts') {
+        const lostA = (a.total_possible||0) - (a.total_earned||0);
+        const lostB = (b.total_possible||0) - (b.total_earned||0);
+        return lostB - lostA; // most points lost first
+      }
+      return a.confidence_pct - b.confidence_pct; // lowest % first
+    })
     .slice(0, 10);
 
-  if (!problems.length) { el.innerHTML = ''; return; }
-
   el.innerHTML = `
-    <div class="slabel" style="color:var(--red)">Needs Attention — ${problems.length} project${problems.length > 1 ? 's' : ''} below 90%</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <div class="slabel" style="color:var(--red);margin:0">Needs Attention — ${candidates.length} project${candidates.length > 1 ? 's' : ''} below 90%</div>
+      <div style="display:flex;gap:4px;margin-left:auto">
+        <button class="sort-btn${mode==='pct'?' active':''}" onclick="setProblemSort('${pfx}','pct')" title="Sort by confidence %">% Score</button>
+        <button class="sort-btn${mode==='pts'?' active':''}" onclick="setProblemSort('${pfx}','pts')" title="Sort by points lost">Pts Lost</button>
+      </div>
+    </div>
     <div class="problem-grid">${problems.map((p, i) => {
+      const ptsLost = Math.round(((p.total_possible||0) - (p.total_earned||0)) * 10) / 10;
       const weakCats = Object.entries(p.categories)
         .filter(([, v]) => v > 0 && v < 90)
         .sort((a, b) => a[1] - b[1]);
@@ -631,7 +660,10 @@ function buildProblemProjects(pfx, ps) {
       return `<div class="problem-item" onclick="openPanel(${esc(p)})">
         <div class="problem-rank">#${i + 1} Needs Work</div>
         <div class="problem-name">${p.name}</div>
-        <div><span class="sbadge r">${p.confidence_pct}%</span></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="sbadge r">${p.confidence_pct}%</span>
+          ${ptsLost > 0 ? `<span style="font-family:var(--mono);font-size:13px;color:var(--red);opacity:.8">▼ ${ptsLost} pts lost</span>` : ''}
+        </div>
         ${sys ? `<div class="problem-bars">${sys}</div>` : ''}
         ${weakCats.length ? `<div class="problem-weak"><span style="color:var(--muted)">Weak features: </span><span style="color:var(--red);font-family:var(--mono);font-size:15px">${weakCats.map(([n, v]) => `${n} ${v}%`).join(' · ')}</span></div>` : ''}
       </div>`;
