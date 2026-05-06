@@ -863,7 +863,7 @@ function renderJobDetail() {
   if (!allDates.length) { el.innerHTML = ''; return; }
   const dateHeaders = allDates.map(d => `<th class="heat-date-th">${fmtDate(d)}</th>`).join('');
   const rows = filteredCats.map(sys => {
-    const cells = allDates.map(d => {
+    const cells = allDates.map((d, i) => {
       const r = (RUNS[d]||[]).find(x => x.name === name);
       if (!r) return `<td class="heat-cell heat-empty" title="${sys.label} · ${fmtDate(d)}: No data">—</td>`;
       const cc = r.catCounts && r.catCounts[sys.label];
@@ -873,7 +873,15 @@ function renderJobDetail() {
       if (collected === 0) return `<td class="heat-cell heat-empty" title="${sys.label} · ${fmtDate(d)}: Not collected">—</td>`;
       const v = Math.round(complete / collected * 1000) / 10;
       const col = sc(v);
-      return `<td class="heat-cell" style="background:${col}22;color:${col};border:1px solid ${col}44" title="${sys.label} · ${fmtDate(d)}: ${v}% of collected">${v}%</td>`;
+      const prevD = allDates[i - 1];
+      const prevR = prevD ? (RUNS[prevD]||[]).find(x => x.name === name) : null;
+      const prevCc = prevR && prevR.catCounts ? prevR.catCounts[sys.label] : null;
+      const prevCollected = prevCc ? prevCc.complete + prevCc.incomplete : 0;
+      const prevV = prevCollected > 0 ? Math.round(prevCc.complete / prevCollected * 1000) / 10 : null;
+      const drop = prevV !== null ? Math.round((prevV - v) * 10) / 10 : 0;
+      const dropHtml = drop > 1 ? `<div style="font-size:10px;color:#ff6b6b;line-height:1;margin-top:2px">▼${drop}</div>` : '';
+      const borderStyle = drop > 1 ? `border:1px solid #ff6b6b` : `border:1px solid ${col}44`;
+      return `<td class="heat-cell" style="background:${col}22;color:${col};${borderStyle}" title="${sys.label} · ${fmtDate(d)}: ${v}%${drop > 1 ? ` (▼${drop} from prev)` : ''}">${v}%${dropHtml}</td>`;
     }).join('');
     return `<tr class="heat-row"><td class="heat-name" title="${sys.label}">${sys.label}</td>${cells}</tr>`;
   }).join('');
@@ -910,14 +918,19 @@ function renderTrendHeat(allNames, activeDates) {
   const dateHeaders = activeDates.map(d => `<th class="heat-date-th">${fmtDate(d)}</th>`).join('');
 
   const rows = sorted.map(name => {
-    const cells = activeDates.map(d => {
+    const cells = activeDates.map((d, i) => {
       const p = (RUNS[d]||[]).find(x => x.name === name);
       if (p && p.confidence_pct > 0) {
         const v = p.confidence_pct;
         const col = sc(v);
-        return `<td class="heat-cell" style="background:${col}22;color:${col};border:1px solid ${col}44" title="${name} · ${d}: ${v}%">${v}%</td>`;
+        const prevD = activeDates[i - 1];
+        const prevP = prevD ? (RUNS[prevD]||[]).find(x => x.name === name) : null;
+        const drop = prevP && prevP.confidence_pct > 0 ? Math.round((prevP.confidence_pct - v) * 10) / 10 : 0;
+        const dropHtml = drop > 1 ? `<div style="font-size:10px;color:#ff6b6b;line-height:1;margin-top:2px">▼${drop}</div>` : '';
+        const borderStyle = drop > 1 ? `border:1px solid #ff6b6b` : `border:1px solid ${col}44`;
+        return `<td class="heat-cell" style="background:${col}22;color:${col};${borderStyle}" title="${name} · ${fmtDate(d)}: ${v}%${drop > 1 ? ` (▼${drop} from prev)` : ''}">${v}%${dropHtml}</td>`;
       }
-      return `<td class="heat-cell heat-empty" title="${name} · ${d}: No data">—</td>`;
+      return `<td class="heat-cell heat-empty" title="${name} · ${fmtDate(d)}: No data">—</td>`;
     }).join('');
     return `<tr class="heat-row"><td class="heat-name" title="${name}">${sn(name)}</td>${cells}</tr>`;
   }).join('');
