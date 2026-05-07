@@ -984,9 +984,10 @@ function renderCollectors() {
   }));
 
   const sort = window._colSort;
-  if (sort === 'score')    collectors.sort((a,b) => b.score - a.score);
-  else if (sort === 'name') collectors.sort((a,b) => a.name.localeCompare(b.name));
+  if (sort === 'score')       collectors.sort((a,b) => b.score - a.score);
+  else if (sort === 'name')   collectors.sort((a,b) => a.name.localeCompare(b.name));
   else if (sort === 'projects') collectors.sort((a,b) => b.projects.length - a.projects.length);
+  else if (sort === 'ptslost') collectors.sort((a,b) => (b.possible - b.earned) - (a.possible - a.earned));
 
   function initials(n) {
     const parts = n.replace(/_LandscapesM4/i,'').replace(/_landscapesm4/i,'').split(/[_\s]/);
@@ -996,8 +997,13 @@ function renderCollectors() {
     return n.replace(/_LandscapesM4/i,'').replace(/_landscapesm4/i,'').replace(/_/g,' ');
   }
 
-  const sortBtns = ['score','name','projects'].map(s =>
-    `<button class="sort-btn${sort===s?' active':''}" onclick="window._colSort='${s}';renderCollectors()">${s==='score'?'Score':s==='name'?'Name':'# Projects'}</button>`
+  const sortBtns = [
+    ['score',    'Score'],
+    ['ptslost',  'Pts Lost'],
+    ['name',     'Name'],
+    ['projects', '# Projects'],
+  ].map(([s,label]) =>
+    `<button class="sort-btn${sort===s?' active':''}" onclick="window._colSort='${s}';renderCollectors()">${label}</button>`
   ).join('');
 
   const cards = collectors.map(c => {
