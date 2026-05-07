@@ -154,6 +154,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 
 @media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr);}.chart-grid{grid-template-columns:1fr;}.panel{width:100%;}}
 
+/* ── Toggle switch ── */
+.toggle-wrap{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;}
+.toggle-track{position:relative;width:36px;height:20px;border-radius:10px;background:#444;transition:background .2s;flex-shrink:0;}
+.toggle-track.on{background:var(--green);}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s;}
+.toggle-track.on .toggle-thumb{left:19px;}
+.toggle-label{font-family:var(--mono);font-size:13px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;}
+
 /* ── Collectors tab ── */
 .col-header{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
 .col-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-bottom:24px;}
@@ -953,11 +961,16 @@ function renderJobDetail() {
 // ══════════════════════════════════════════
 //  COLLECTORS
 // ══════════════════════════════════════════
-window._colSort      = 'score';
-window._colDateRange = null; // null = all time; number = days
+window._colSort        = 'score';
+window._colDateRange   = null;  // null = all time; number = days
+window._colAsBuiltsOnly = true; // default on
 
 function setColDateRange(n) {
   window._colDateRange = n;
+  renderCollectors();
+}
+function toggleColAsBuilts() {
+  window._colAsBuiltsOnly = !window._colAsBuiltsOnly;
   renderCollectors();
 }
 
@@ -991,7 +1004,9 @@ function renderCollectors() {
       }
     });
   });
-  const allProjects = Object.values(projectLatest);
+  const asBuiltsOnly = window._colAsBuiltsOnly;
+  const allProjects = Object.values(projectLatest)
+    .filter(p => !asBuiltsOnly || p.type === 'asbuilt');
 
   // Build collector map
   const map = {};
@@ -1043,6 +1058,8 @@ function renderCollectors() {
   ).join('');
 
   const rangeLabel = range ? `last ${range} days` : 'all time';
+  const uniqueCount = collectors.length;
+  const typeLabel = asBuiltsOnly ? 'As-Builts' : 'All Projects';
 
   const cards = collectors.map(c => {
     const col = sc(c.score);
@@ -1069,17 +1086,27 @@ function renderCollectors() {
   }).join('');
 
   content.innerHTML = `
-    <div class="col-header" style="gap:10px">
+    <div class="col-header" style="gap:16px;align-items:flex-end">
       <div>
         <div class="clabel">Date Range</div>
         <div style="display:flex;gap:4px">${rangeBtns}</div>
+      </div>
+      <div>
+        <div class="clabel">Project Type</div>
+        <div class="toggle-wrap" onclick="toggleColAsBuilts()">
+          <div class="toggle-track${asBuiltsOnly?' on':''}"><div class="toggle-thumb"></div></div>
+          <span class="toggle-label">As-Builts Only</span>
+        </div>
       </div>
       <div style="margin-left:auto">
         <div class="clabel">Sort By</div>
         <div style="display:flex;gap:4px">${sortBtns}</div>
       </div>
     </div>
-    <div class="slabel" style="margin-bottom:14px">Collector Performance — ${rangeLabel} · as of ${fmtDate(latestDate)}</div>
+    <div style="display:flex;align-items:baseline;gap:12px;margin:14px 0 14px">
+      <div class="slabel" style="margin:0">Collector Performance — ${rangeLabel} · ${typeLabel}</div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--muted)">${uniqueCount} collector${uniqueCount!==1?'s':''}</div>
+    </div>
     <div class="col-grid">${cards}</div>
     <div style="font-size:12px;color:var(--muted);font-style:italic;margin-top:4px">
       Score is a points-weighted average across all projects the collector contributed to within the selected date range. Projects with multiple collectors share the same project score.
