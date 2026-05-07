@@ -953,19 +953,45 @@ function renderJobDetail() {
 // ══════════════════════════════════════════
 //  COLLECTORS
 // ══════════════════════════════════════════
-window._colSort = 'score';
+window._colSort      = 'score';
+window._colDateRange = null; // null = all time; number = days
+
+function setColDateRange(n) {
+  window._colDateRange = n;
+  renderCollectors();
+}
 
 function renderCollectors() {
   const loading = document.getElementById('col-loading');
   const content = document.getElementById('col-content');
-  const dates = Object.keys(RUNS).sort();
-  if (!dates.length) { loading.style.display='block'; content.style.display='none'; return; }
+  const allDates = Object.keys(RUNS).sort();
+  if (!allDates.length) { loading.style.display='block'; content.style.display='none'; return; }
   loading.style.display = 'none';
   content.style.display = 'block';
 
-  // Use latest run date for current snapshot
-  const latestDate = dates[dates.length - 1];
-  const allProjects = (RUNS[latestDate] || []).filter(p => p.confidence_pct > 0);
+  // Filter dates to the selected range
+  const range = window._colDateRange;
+  const latestDate = allDates[allDates.length - 1];
+  let activeDates;
+  if (!range) {
+    activeDates = allDates;
+  } else {
+    const cutoff = new Date(latestDate);
+    cutoff.setDate(cutoff.getDate() - range + 1);
+    const cutStr = cutoff.toISOString().slice(0, 10);
+    activeDates = allDates.filter(d => d >= cutStr);
+  }
+
+  // For each project, use its most recent run within activeDates
+  const projectLatest = {}; // name -> row
+  activeDates.forEach(d => {
+    (RUNS[d] || []).filter(p => p.confidence_pct > 0).forEach(p => {
+      if (!projectLatest[p.name] || d > projectLatest[p.name]._date) {
+        projectLatest[p.name] = { ...p, _date: d };
+      }
+    });
+  });
+  const allProjects = Object.values(projectLatest);
 
   // Build collector map
   const map = {};
@@ -984,8 +1010,8 @@ function renderCollectors() {
   }));
 
   const sort = window._colSort;
-  if (sort === 'score')       collectors.sort((a,b) => b.score - a.score);
-  else if (sort === 'name')   collectors.sort((a,b) => a.name.localeCompare(b.name));
+  if (sort === 'score')        collectors.sort((a,b) => b.score - a.score);
+  else if (sort === 'name')    collectors.sort((a,b) => a.name.localeCompare(b.name));
   else if (sort === 'projects') collectors.sort((a,b) => b.projects.length - a.projects.length);
   else if (sort === 'ptslost') collectors.sort((a,b) => (b.possible - b.earned) - (a.possible - a.earned));
 
@@ -997,6 +1023,16 @@ function renderCollectors() {
     return n.replace(/_LandscapesM4/i,'').replace(/_landscapesm4/i,'').replace(/_/g,' ');
   }
 
+  const rangeBtns = [
+    [7,   'Last 7'],
+    [30,  'Last 30'],
+    [60,  'Last 60'],
+    [180, 'Last 180'],
+    [null,'All'],
+  ].map(([n,label]) =>
+    `<button class="sort-btn${range===n?' active':''}" onclick="setColDateRange(${n})">${label}</button>`
+  ).join('');
+
   const sortBtns = [
     ['score',    'Score'],
     ['ptslost',  'Pts Lost'],
@@ -1005,6 +1041,8 @@ function renderCollectors() {
   ].map(([s,label]) =>
     `<button class="sort-btn${sort===s?' active':''}" onclick="window._colSort='${s}';renderCollectors()">${label}</button>`
   ).join('');
+
+  const rangeLabel = range ? `last ${range} days` : 'all time';
 
   const cards = collectors.map(c => {
     const col = sc(c.score);
@@ -1031,13 +1069,20 @@ function renderCollectors() {
   }).join('');
 
   content.innerHTML = `
-    <div class="col-header">
-      <div class="slabel" style="margin:0">Collector Performance — ${fmtDate(latestDate)}</div>
-      <div style="display:flex;gap:4px;margin-left:auto">${sortBtns}</div>
+    <div class="col-header" style="gap:10px">
+      <div>
+        <div class="clabel">Date Range</div>
+        <div style="display:flex;gap:4px">${rangeBtns}</div>
+      </div>
+      <div style="margin-left:auto">
+        <div class="clabel">Sort By</div>
+        <div style="display:flex;gap:4px">${sortBtns}</div>
+      </div>
     </div>
+    <div class="slabel" style="margin-bottom:14px">Collector Performance — ${rangeLabel} · as of ${fmtDate(latestDate)}</div>
     <div class="col-grid">${cards}</div>
     <div style="font-size:12px;color:var(--muted);font-style:italic;margin-top:4px">
-      Score is a points-weighted average across all projects the collector contributed to. Projects with multiple collectors share the same project score.
+      Score is a points-weighted average across all projects the collector contributed to within the selected date range. Projects with multiple collectors share the same project score.
     </div>`;
 }
 
