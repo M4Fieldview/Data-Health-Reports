@@ -210,6 +210,16 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
   <span class="status-msg" id="statusMsg"></span>
 </div>
 
+<!-- COLLECTOR PANEL -->
+<div class="overlay" id="col-overlay" onclick="closeCollectorPanel()"></div>
+<div class="panel" id="col-panel">
+  <div class="panel-head">
+    <div><h3 id="cpn-name">—</h3><p id="cpn-meta">—</p></div>
+    <button class="close-btn" onclick="closeCollectorPanel()">✕</button>
+  </div>
+  <div class="panel-body" id="cpn-body"></div>
+</div>
+
 <!-- AS-BUILTS -->
 <div class="page active" id="page-asbuilt">
   <div id="ab-loading" class="loading-state"><p>Loading data…</p></div>
@@ -1097,9 +1107,9 @@ function renderCollectors() {
       .map(p => {
         const delta = Math.round(p._earnedInRange * 10) / 10;
         const deltaStr = range
-          ? (delta > 0 ? `<span style="font-family:var(--mono);font-size:11px;color:#52C48C;margin-left:4px">+${delta.toLocaleString()} pts</span>`
+          ? (delta > 0 ? `<span style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:4px">+${delta.toLocaleString()} pts</span>`
            : delta < 0 ? `<span style="font-family:var(--mono);font-size:11px;color:var(--red);margin-left:4px">▼${Math.abs(delta).toLocaleString()} pts</span>`
-           : `<span style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:4px">no change</span>`)
+           : `<span style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:4px">—</span>`)
           : '';
         return `<div class="col-proj-row">
           <span class="col-proj-name" title="${p.name}">${p.name}</span>
@@ -1110,7 +1120,7 @@ function renderCollectors() {
     const metaPts = range
       ? `${c.earned >= 0 ? '+' : ''}${Math.round(c.earned).toLocaleString()} pts this period`
       : `${Math.round(c.totalEarned).toLocaleString()} / ${Math.round(c.totalPossible).toLocaleString()} pts`;
-    return `<div class="col-card">
+    return `<div class="col-card" style="cursor:pointer" onclick="openCollectorPanel(${esc(c)})">
       <div class="col-card-top">
         <div class="col-avatar" style="background:${col}22;color:${col}">${ini}</div>
         <div>
@@ -1151,6 +1161,86 @@ function renderCollectors() {
     <div style="font-size:12px;color:var(--muted);font-style:italic;margin-top:4px">
       Score is a points-weighted average across all projects the collector contributed to within the selected date range. Projects with multiple collectors share the same project score.
     </div>`;
+}
+
+// ══════════════════════════════════════════
+//  COLLECTOR PANEL
+// ══════════════════════════════════════════
+function openCollectorPanel(c) {
+  if (typeof c === 'string') c = JSON.parse(c);
+  const range      = window._colDateRange;
+  const cleanName  = n => n.replace(/_LandscapesM4/i,'').replace(/_landscapesm4/i,'').replace(/_/g,' ');
+  const rangeLabel = range ? `Last ${range} days` : 'All time';
+
+  document.getElementById('cpn-name').textContent = cleanName(c.name);
+  document.getElementById('cpn-meta').textContent = `${rangeLabel} · ${c.projects.length} project${c.projects.length!==1?'s':''}`;
+
+  // Score hero
+  const col = sc(c.score);
+  const scoreLabel = range ? `${rangeLabel} productivity` : 'Weighted avg confidence';
+
+  // Build project breakdown sections
+  const projectSections = [...c.projects]
+    .sort((a,b) => a.confidence_pct - b.confidence_pct)
+    .map(p => {
+      const delta     = Math.round((p._earnedInRange||0) * 10) / 10;
+      const deltaHtml = range
+        ? (delta > 0
+            ? `<span style="font-family:var(--mono);font-size:12px;color:var(--muted)"> · +${delta.toLocaleString()} pts this period</span>`
+            : delta < 0
+            ? `<span style="font-family:var(--mono);font-size:12px;color:var(--red)"> · ▼${Math.abs(delta).toLocaleString()} pts</span>`
+            : `<span style="font-family:var(--mono);font-size:12px;color:var(--muted)"> · no change</span>`)
+        : '';
+
+      // Component breakdown using catCounts
+      const catRows = Object.entries(p.categories||{}).map(([n, v]) => {
+        const cc         = p.catCounts && p.catCounts[n];
+        const total      = cc ? cc.total      : 0;
+        const incomplete = cc ? cc.incomplete : 0;
+        const unit       = cc ? cc.unit       : '';
+        if (total === 0 && v === 0) return '';
+        const wrongCol = total > 0
+          ? `<span style="font-family:var(--mono);font-size:12px;min-width:80px;text-align:right;padding-right:10px;color:${incomplete>0?'var(--red)':'var(--green)'};flex-shrink:0">${incomplete>0?'−'+incomplete.toLocaleString()+(unit?' '+unit:''):'✓'}</span>`
+          : `<span style="min-width:80px;flex-shrink:0"></span>`;
+        return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div><span class="cat-pct" style="color:${sc(v)}">${v}%</span></div>`;
+      }).filter(Boolean).join('');
+
+      const ptsLine = `<span style="color:${sc(p.confidence_pct)}">${(p.total_earned||0).toLocaleString()}</span><span style="color:var(--muted)"> / ${(p.total_possible||0).toLocaleString()} pts</span>`;
+
+      return `
+        <div style="background:var(--surface2);border-radius:6px;padding:14px 16px;margin-bottom:12px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
+            <div>
+              <div style="font-size:15px;font-weight:500;color:var(--text)">${p.name}</div>
+              <div style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:2px">${ptsLine}${deltaHtml}</div>
+            </div>
+            <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:${sc(p.confidence_pct)};margin-left:12px;flex-shrink:0">${p.confidence_pct}%</div>
+          </div>
+          ${catRows ? `
+            <div style="display:flex;align-items:center;padding:3px 0 5px;border-bottom:1px solid var(--border);margin-bottom:4px">
+              <span style="flex:1;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Feature</span>
+              <span style="min-width:80px;flex-shrink:0;text-align:right;padding-right:10px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Info Missing</span>
+              <span style="flex:1.2;margin:0 10px"></span>
+              <span style="min-width:36px;text-align:right;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Score</span>
+            </div>${catRows}` : ''}
+        </div>`;
+    }).join('');
+
+  document.getElementById('cpn-body').innerHTML = `
+    <div class="score-hero">
+      <div class="score-hero-val" style="color:${col}">${c.score.toFixed(1)}%</div>
+      <div class="score-hero-lbl">${scoreLabel}</div>
+    </div>
+    <div class="p-sec">Projects</div>
+    ${projectSections}`;
+
+  document.getElementById('col-panel').classList.add('open');
+  document.getElementById('col-overlay').classList.add('show');
+}
+
+function closeCollectorPanel() {
+  document.getElementById('col-panel').classList.remove('open');
+  document.getElementById('col-overlay').classList.remove('show');
 }
 
 function switchTab(tab, btn) {
