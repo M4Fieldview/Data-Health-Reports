@@ -985,50 +985,71 @@ function renderCollectors() {
   // Filter dates to the selected range
   const range = window._colDateRange;
   const latestDate = allDates[allDates.length - 1];
-  let activeDates;
+  let activeDates, baselineDates;
   if (!range) {
     activeDates = allDates;
+    baselineDates = [];
   } else {
     const cutoff = new Date(latestDate);
     cutoff.setDate(cutoff.getDate() - range + 1);
     const cutStr = cutoff.toISOString().slice(0, 10);
-    activeDates = allDates.filter(d => d >= cutStr);
+    activeDates  = allDates.filter(d => d >= cutStr);
+    baselineDates = allDates.filter(d => d <  cutStr);
   }
 
-  // For each project, use its most recent run within activeDates
-  const projectLatest = {}; // name -> row
+  // For each project, find latest run within the active window
+  const projectLatest = {};
   activeDates.forEach(d => {
     (RUNS[d] || []).filter(p => p.confidence_pct > 0).forEach(p => {
-      if (!projectLatest[p.name] || d > projectLatest[p.name]._date) {
+      if (!projectLatest[p.name] || d > projectLatest[p.name]._date)
         projectLatest[p.name] = { ...p, _date: d };
-      }
     });
   });
+
+  // For each project, find the latest run BEFORE the window (baseline)
+  const projectBaseline = {};
+  baselineDates.forEach(d => {
+    (RUNS[d] || []).filter(p => p.confidence_pct > 0).forEach(p => {
+      if (!projectBaseline[p.name] || d > projectBaseline[p.name]._date)
+        projectBaseline[p.name] = { ...p, _date: d };
+    });
+  });
+
   const asBuiltsOnly = window._colAsBuiltsOnly;
   const allProjects = Object.values(projectLatest)
     .filter(p => !asBuiltsOnly || p.type === 'asbuilt');
 
-  // Build collector map
+  // Build collector map — use deltas when a range is active
   const map = {};
   allProjects.forEach(p => {
+    const bl = range ? (projectBaseline[p.name] || null) : null;
+    // Points earned within the window (delta vs baseline, or full total for all-time)
+    const earnedInRange   = bl ? (p.total_earned   - (bl.total_earned   || 0)) : (p.total_earned   || 0);
+    const possibleInRange = bl ? (p.total_possible - (bl.total_possible || 0)) : (p.total_possible || 0);
+    // Keep current score/totals for reference on card
     (p.counts.collectors || '').split('|').map(c => c.trim()).filter(Boolean).forEach(c => {
-      if (!map[c]) map[c] = { name: c, projects: [], earned: 0, possible: 0 };
-      map[c].projects.push(p);
-      map[c].earned   += p.total_earned   || 0;
-      map[c].possible += p.total_possible || 0;
+      if (!map[c]) map[c] = { name: c, projects: [], earned: 0, possible: 0, totalEarned: 0, totalPossible: 0 };
+      map[c].projects.push({ ...p, _earnedInRange: earnedInRange, _possibleInRange: possibleInRange, _baseline: bl });
+      map[c].earned        += earnedInRange;
+      map[c].possible      += p.total_possible || 0; // denominator always full scope
+      map[c].totalEarned   += p.total_earned   || 0;
+      map[c].totalPossible += p.total_possible || 0;
     });
   });
 
   let collectors = Object.values(map).map(c => ({
     ...c,
-    score: c.possible > 0 ? (c.earned / c.possible) * 100 : 0
+    // Score = current weighted avg across their projects
+    score: c.totalPossible > 0 ? (c.totalEarned / c.totalPossible) * 100 : 0,
+    // ptsLost = total outstanding work across their projects
+    ptsLost: c.totalPossible - c.totalEarned,
   }));
 
   const sort = window._colSort;
-  if (sort === 'score')        collectors.sort((a,b) => b.score - a.score);
-  else if (sort === 'name')    collectors.sort((a,b) => a.name.localeCompare(b.name));
+  if (sort === 'score')         collectors.sort((a,b) => b.score - a.score);
+  else if (sort === 'name')     collectors.sort((a,b) => a.name.localeCompare(b.name));
   else if (sort === 'projects') collectors.sort((a,b) => b.projects.length - a.projects.length);
-  else if (sort === 'ptslost') collectors.sort((a,b) => (b.possible - b.earned) - (a.possible - a.earned));
+  else if (sort === 'ptslost')  collectors.sort((a,b) => b.ptsLost - a.ptsLost);
 
   function initials(n) {
     const parts = n.replace(/_LandscapesM4/i,'').replace(/_landscapesm4/i,'').split(/[_\s]/);
@@ -1066,16 +1087,28 @@ function renderCollectors() {
     const ini = initials(c.name);
     const projRows = [...c.projects]
       .sort((a,b) => a.confidence_pct - b.confidence_pct)
-      .map(p => `<div class="col-proj-row">
-        <span class="col-proj-name" title="${p.name}">${p.name}</span>
-        <span class="col-proj-pct" style="color:${sc(p.confidence_pct)}">${p.confidence_pct}%</span>
-      </div>`).join('');
+      .map(p => {
+        const delta = Math.round(p._earnedInRange * 10) / 10;
+        const deltaStr = range
+          ? (delta > 0 ? `<span style="font-family:var(--mono);font-size:11px;color:#52C48C;margin-left:4px">+${delta.toLocaleString()} pts</span>`
+           : delta < 0 ? `<span style="font-family:var(--mono);font-size:11px;color:var(--red);margin-left:4px">▼${Math.abs(delta).toLocaleString()} pts</span>`
+           : `<span style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:4px">no change</span>`)
+          : '';
+        return `<div class="col-proj-row">
+          <span class="col-proj-name" title="${p.name}">${p.name}</span>
+          <span class="col-proj-pct" style="color:${sc(p.confidence_pct)}">${p.confidence_pct}%${deltaStr}</span>
+        </div>`;
+      }).join('');
+    // Meta line: show pts-in-range when range active, cumulative totals for all-time
+    const metaPts = range
+      ? `${c.earned >= 0 ? '+' : ''}${Math.round(c.earned).toLocaleString()} pts this period`
+      : `${Math.round(c.totalEarned).toLocaleString()} / ${Math.round(c.totalPossible).toLocaleString()} pts`;
     return `<div class="col-card">
       <div class="col-card-top">
         <div class="col-avatar" style="background:${col}22;color:${col}">${ini}</div>
         <div>
           <div class="col-name">${cleanName(c.name)}</div>
-          <div class="col-meta">${c.projects.length} project${c.projects.length!==1?'s':''} · ${Math.round(c.earned).toLocaleString()} / ${Math.round(c.possible).toLocaleString()} pts</div>
+          <div class="col-meta">${c.projects.length} project${c.projects.length!==1?'s':''} · ${metaPts}</div>
         </div>
         <div style="margin-left:auto;text-align:right">
           <div class="col-score" style="color:${col}">${c.score.toFixed(1)}%</div>
