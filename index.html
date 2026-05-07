@@ -153,6 +153,20 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 .problem-weak{font-size:16px;padding-top:2px;border-top:1px solid rgba(58,110,90,.4);}
 
 @media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr);}.chart-grid{grid-template-columns:1fr;}.panel{width:100%;}}
+
+/* ── Collectors tab ── */
+.col-header{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+.col-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-bottom:24px;}
+.col-card{background:var(--surface);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;}
+.col-card-top{display:flex;align-items:center;gap:12px;}
+.col-avatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:15px;font-weight:700;flex-shrink:0;}
+.col-name{font-size:16px;font-weight:500;color:var(--text);line-height:1.3;word-break:break-all;}
+.col-score{font-family:var(--mono);font-size:26px;font-weight:700;}
+.col-meta{font-size:13px;color:var(--muted);font-family:var(--mono);}
+.col-projects{display:flex;flex-direction:column;gap:4px;border-top:1px solid rgba(255,255,255,.06);padding-top:8px;}
+.col-proj-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;}
+.col-proj-name{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
+.col-proj-pct{font-family:var(--mono);font-size:13px;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -171,6 +185,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
     <button class="tab-btn" onclick="switchTab('staking',this)">Staking</button>
     <button class="tab-btn" onclick="switchTab('trends',this)">Trends</button>
     <button class="tab-btn" onclick="switchTab('detail',this)">Job Detail</button>
+    <button class="tab-btn" onclick="switchTab('collectors',this)">Collectors</button>
   </div>
   <div class="header-meta">
     <div class="meta-badge"><span class="status-dot loading" id="statusDot"></span><span id="statusText">Connecting…</span></div>
@@ -291,6 +306,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
     <div class="slabel">Component % Over Time</div>
     <div class="cc" style="margin-bottom:12px"><div class="heat-wrap"><div id="jd-trend-heat"></div></div></div>
   </div>
+</div>
+
+<!-- COLLECTORS -->
+<div class="page" id="page-collectors">
+  <div id="col-loading" class="loading-state"><p>Loading data…</p></div>
+  <div id="col-content" style="display:none"></div>
 </div>
 
 <!-- TRENDS -->
@@ -515,6 +536,7 @@ function rebuild() {
   buildTab('sk','staking');
   renderTrends();
   buildJobDetail();
+  renderCollectors();
 }
 
 // ══════════════════════════════════════════
@@ -928,11 +950,97 @@ function renderJobDetail() {
   </table>`;
 }
 
+// ══════════════════════════════════════════
+//  COLLECTORS
+// ══════════════════════════════════════════
+window._colSort = 'score';
+
+function renderCollectors() {
+  const loading = document.getElementById('col-loading');
+  const content = document.getElementById('col-content');
+  const dates = Object.keys(RUNS).sort();
+  if (!dates.length) { loading.style.display='block'; content.style.display='none'; return; }
+  loading.style.display = 'none';
+  content.style.display = 'block';
+
+  // Use latest run date for current snapshot
+  const latestDate = dates[dates.length - 1];
+  const allProjects = (RUNS[latestDate] || []).filter(p => p.confidence_pct > 0);
+
+  // Build collector map
+  const map = {};
+  allProjects.forEach(p => {
+    (p.counts.collectors || '').split('|').map(c => c.trim()).filter(Boolean).forEach(c => {
+      if (!map[c]) map[c] = { name: c, projects: [], earned: 0, possible: 0 };
+      map[c].projects.push(p);
+      map[c].earned   += p.total_earned   || 0;
+      map[c].possible += p.total_possible || 0;
+    });
+  });
+
+  let collectors = Object.values(map).map(c => ({
+    ...c,
+    score: c.possible > 0 ? (c.earned / c.possible) * 100 : 0
+  }));
+
+  const sort = window._colSort;
+  if (sort === 'score')    collectors.sort((a,b) => b.score - a.score);
+  else if (sort === 'name') collectors.sort((a,b) => a.name.localeCompare(b.name));
+  else if (sort === 'projects') collectors.sort((a,b) => b.projects.length - a.projects.length);
+
+  function initials(n) {
+    const parts = n.replace(/_LandscapesM4/i,'').replace(/_landscapesm4/i,'').split(/[_\s]/);
+    return parts.slice(0,2).map(p=>p[0]||'').join('').toUpperCase() || n[0].toUpperCase();
+  }
+  function cleanName(n) {
+    return n.replace(/_LandscapesM4/i,'').replace(/_landscapesm4/i,'').replace(/_/g,' ');
+  }
+
+  const sortBtns = ['score','name','projects'].map(s =>
+    `<button class="sort-btn${sort===s?' active':''}" onclick="window._colSort='${s}';renderCollectors()">${s==='score'?'Score':s==='name'?'Name':'# Projects'}</button>`
+  ).join('');
+
+  const cards = collectors.map(c => {
+    const col = sc(c.score);
+    const ini = initials(c.name);
+    const projRows = [...c.projects]
+      .sort((a,b) => a.confidence_pct - b.confidence_pct)
+      .map(p => `<div class="col-proj-row">
+        <span class="col-proj-name" title="${p.name}">${p.name}</span>
+        <span class="col-proj-pct" style="color:${sc(p.confidence_pct)}">${p.confidence_pct}%</span>
+      </div>`).join('');
+    return `<div class="col-card">
+      <div class="col-card-top">
+        <div class="col-avatar" style="background:${col}22;color:${col}">${ini}</div>
+        <div>
+          <div class="col-name">${cleanName(c.name)}</div>
+          <div class="col-meta">${c.projects.length} project${c.projects.length!==1?'s':''} · ${Math.round(c.earned).toLocaleString()} / ${Math.round(c.possible).toLocaleString()} pts</div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="col-score" style="color:${col}">${c.score.toFixed(1)}%</div>
+        </div>
+      </div>
+      <div class="col-projects">${projRows}</div>
+    </div>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div class="col-header">
+      <div class="slabel" style="margin:0">Collector Performance — ${fmtDate(latestDate)}</div>
+      <div style="display:flex;gap:4px;margin-left:auto">${sortBtns}</div>
+    </div>
+    <div class="col-grid">${cards}</div>
+    <div style="font-size:12px;color:var(--muted);font-style:italic;margin-top:4px">
+      Score is a points-weighted average across all projects the collector contributed to. Projects with multiple collectors share the same project score.
+    </div>`;
+}
+
 function switchTab(tab, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+tab).classList.add('active');
+  if (tab === 'collectors') renderCollectors();
 }
 
 // ══════════════════════════════════════════
