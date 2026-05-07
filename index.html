@@ -1026,8 +1026,12 @@ function renderCollectors() {
     // Points earned within the window (delta vs baseline, or full total for all-time)
     const earnedInRange   = bl ? (p.total_earned   - (bl.total_earned   || 0)) : (p.total_earned   || 0);
     const possibleInRange = bl ? (p.total_possible - (bl.total_possible || 0)) : (p.total_possible || 0);
+    // Suppress admin accounts
+    const EXCLUDED = ['landscapes_unlimited'];
     // Keep current score/totals for reference on card
-    (p.counts.collectors || '').split('|').map(c => c.trim()).filter(Boolean).forEach(c => {
+    (p.counts.collectors || '').split('|').map(c => c.trim()).filter(Boolean)
+      .filter(c => !EXCLUDED.includes(c.toLowerCase()))
+      .forEach(c => {
       if (!map[c]) map[c] = { name: c, projects: [], earned: 0, possible: 0, totalEarned: 0, totalPossible: 0 };
       map[c].projects.push({ ...p, _earnedInRange: earnedInRange, _possibleInRange: possibleInRange, _baseline: bl });
       map[c].earned        += earnedInRange;
@@ -1039,9 +1043,12 @@ function renderCollectors() {
 
   let collectors = Object.values(map).map(c => ({
     ...c,
-    // Score = current weighted avg across their projects
-    score: c.totalPossible > 0 ? (c.totalEarned / c.totalPossible) * 100 : 0,
-    // ptsLost = total outstanding work across their projects
+    // Range mode: score = pts earned in window / total scope (productivity %)
+    // All-time mode: score = cumulative earned / total scope (confidence %)
+    score: c.totalPossible > 0
+      ? (range ? (c.earned / c.totalPossible) * 100 : (c.totalEarned / c.totalPossible) * 100)
+      : 0,
+    // ptsLost = total outstanding work across their projects (always cumulative)
     ptsLost: c.totalPossible - c.totalEarned,
   }));
 
