@@ -462,6 +462,7 @@ async function fetchJSON(url) {
 }
 
 function parseRow(row) {
+  if (row['row_type'] && row['row_type'] !== 'project_score') return null;
   const name = String(row['project_name'] || row['name'] || '').trim();
   if (!name) return null;
   const type = /staking/i.test(name) ? 'staking' : 'asbuilt';
