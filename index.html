@@ -399,6 +399,7 @@ const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyxjDjt1B9_bGRbNunt
 //  STATE
 // ══════════════════════════════════════════
 let RUNS = {};
+let COLL_ROWS = {}; // collector_score rows indexed by run_date
 const sortState = { ab:{key:'confidence',dir:1}, sk:{key:'date',dir:-1} };
 const CH = {};
 const TCOLORS = ['#34d399','#60a5fa','#fbbf24','#f87171','#c084fc','#f472b6','#22d3ee','#a3e635','#fb923c','#2dd4bf','#e879f9','#facc15','#4ade80','#818cf8','#38bdf8'];
@@ -427,7 +428,21 @@ async function loadData() {
     if (!Array.isArray(rows) || rows.length === 0) throw new Error('No rows returned from sheet');
 
     RUNS = {};
+    COLL_ROWS = {};
     rows.forEach(row => {
+      // Collector-score rows — store separately, keyed by date
+      if ((row['row_type'] || '') === 'collector_score') {
+        const collector = (row['collector'] || '').trim();
+        if (!collector) return;
+        let dStr = String(row['run_date'] || '').trim();
+        const dObj = new Date(dStr);
+        if (!isNaN(dObj)) dStr = dObj.toISOString().slice(0, 10);
+        if (!dStr) return;
+        if (!COLL_ROWS[dStr]) COLL_ROWS[dStr] = [];
+        COLL_ROWS[dStr].push(row);
+        return;
+      }
+      // Project-score rows
       const p = parseRow(row);
       if (!p) return;
       if (!RUNS[p.run_date]) RUNS[p.run_date] = [];
@@ -1032,26 +1047,54 @@ function renderCollectors() {
   const allProjects = Object.values(projectLatest)
     .filter(p => !asBuiltsOnly || p.type === 'asbuilt');
 
-  // Build collector map — use deltas when a range is active
+  // Build per-collector per-project actual scores from COLL_ROWS (new runs)
+  // Aggregates all categories for a collector on a project within a date window
+  function collScoresByDate(dates) {
+    const out = {}; // out[collector][project_ref] = {earned, possible}
+    dates.forEach(d => {
+      (COLL_ROWS[d] || []).forEach(row => {
+        const c     = (row['collector'] || '').trim();
+        const pname = (row['project_ref'] || row['project_name'] || '').trim();
+        if (!c || !pname) return;
+        if (!out[c]) out[c] = {};
+        if (!out[c][pname]) out[c][pname] = { earned: 0, possible: 0 };
+        out[c][pname].earned   += parseFloat(row['points_earned']   || 0);
+        out[c][pname].possible += parseFloat(row['points_possible'] || 0);
+      });
+    });
+    return out;
+  }
+  const collActive = collScoresByDate(activeDates);
+  const collBase   = collScoresByDate(baselineDates);
+  const hasCollRows = Object.keys(COLL_ROWS).length > 0;
+
+  // Build collector map — use per-collector actual earned/possible when available
+  const EXCLUDED = ['landscapes_unlimited'];
   const map = {};
   allProjects.forEach(p => {
     const bl = range ? (projectBaseline[p.name] || null) : null;
-    // Points earned within the window (delta vs baseline, or full total for all-time)
-    const earnedInRange   = bl ? (p.total_earned   - (bl.total_earned   || 0)) : (p.total_earned   || 0);
-    const possibleInRange = bl ? (p.total_possible - (bl.total_possible || 0)) : (p.total_possible || 0);
-    // Suppress admin accounts
-    const EXCLUDED = ['landscapes_unlimited'];
-    // Keep current score/totals for reference on card
+
     (p.counts.collectors || '').split('|').map(c => c.trim()).filter(Boolean)
       .filter(c => !EXCLUDED.includes(c.toLowerCase()))
       .forEach(c => {
-      if (!map[c]) map[c] = { name: c, projects: [], earned: 0, possible: 0, totalEarned: 0, totalPossible: 0 };
-      map[c].projects.push({ ...p, _earnedInRange: earnedInRange, _possibleInRange: possibleInRange, _baseline: bl });
-      map[c].earned        += earnedInRange;
-      map[c].possible      += p.total_possible || 0; // denominator always full scope
-      map[c].totalEarned   += p.total_earned   || 0;
-      map[c].totalPossible += p.total_possible || 0;
-    });
+        if (!map[c]) map[c] = { name: c, projects: [], earned: 0, possible: 0, totalEarned: 0, totalPossible: 0 };
+
+        // Use collector's actual earned/possible if COLL_ROWS data exists for this project
+        const activeData = hasCollRows ? ((collActive[c] || {})[p.name] || null) : null;
+        const baseData   = hasCollRows ? ((collBase[c]   || {})[p.name] || null) : null;
+
+        const cEarned   = activeData ? activeData.earned   : (p.total_earned   || 0);
+        const cPossible = activeData ? activeData.possible : (p.total_possible || 0);
+        const blEarned  = baseData   ? baseData.earned     : (bl ? (bl.total_earned   || 0) : 0);
+
+        const earnedInRange = range ? Math.max(0, cEarned - blEarned) : cEarned;
+
+        map[c].projects.push({ ...p, _earnedInRange: earnedInRange, _collEarned: cEarned, _collPossible: cPossible, _baseline: bl });
+        map[c].earned        += earnedInRange;
+        map[c].possible      += cPossible;
+        map[c].totalEarned   += cEarned;
+        map[c].totalPossible += cPossible;
+      });
   });
 
   let collectors = Object.values(map).map(c => ({
