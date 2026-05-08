@@ -473,11 +473,13 @@ function parseRow(row) {
   if (!isNaN(d)) dateStr = d.toISOString().slice(0,10);
 
   const g = k => parseFloat(row[k] || 0) || 0;
+  const ge = () => g('total_points_earned')  || g('points_earned');
+  const gp = () => g('total_points_possible') || g('points_possible');
   return {
     name, type, run_date: dateStr,
     confidence_pct:  g('confidence_pct'),
-    total_earned:    g('total_points_earned'),
-    total_possible:  g('total_points_possible'),
+    total_earned:    ge(),
+    total_possible:  gp(),
     irrigation_pct:  g('irrigation_pct'),
     drainage_pct:    g('drainage_pct'),
     golf_pct:        g('golf_pct'),
