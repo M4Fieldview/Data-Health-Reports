@@ -107,6 +107,19 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 .heat-date-th{font-size:13px;color:var(--muted);letter-spacing:.05em;text-align:center;padding:5px 6px;white-space:nowrap;font-weight:600;}
 .heat-name-th{min-width:220px;}
 .heat-name{font-size:14px;color:var(--muted2);padding:4px 12px 4px 0;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;position:sticky;left:0;background:var(--surface);z-index:2;}
+
+/* ── Login overlay ── */
+#login-overlay{position:fixed;inset:0;background:var(--surface);display:flex;align-items:center;justify-content:center;z-index:9999;}
+#login-overlay.hidden{display:none;}
+.login-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:40px 44px;width:100%;max-width:380px;display:flex;flex-direction:column;align-items:center;gap:0;}
+.login-hex{width:42px;height:42px;background:var(--green);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);margin-bottom:18px;}
+.login-title{font-family:var(--mono);font-size:17px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--green);margin-bottom:4px;}
+.login-sub{font-family:var(--mono);font-size:14px;color:var(--muted);margin-bottom:28px;letter-spacing:.04em;}
+.login-field{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:15px;padding:10px 13px;outline:none;transition:border-color .15s;margin-bottom:12px;}
+.login-field:focus{border-color:var(--green);}
+.login-btn{width:100%;background:var(--green);color:#15181d;font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;border:none;border-radius:4px;padding:11px;cursor:pointer;transition:opacity .15s;margin-top:4px;}
+.login-btn:hover{opacity:.85;}
+.login-err{font-family:var(--mono);font-size:13px;color:var(--red);margin-top:10px;letter-spacing:.04em;min-height:18px;text-align:center;}
 .heat-row:hover .heat-name{color:var(--text);}
 .heat-row:hover .heat-cell{opacity:.65;}
 .heat-row:hover .heat-cell:not(.heat-empty){opacity:1;filter:brightness(1.15);}
@@ -178,6 +191,18 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 </style>
 </head>
 <body>
+
+<!-- ── Login overlay ── -->
+<div id="login-overlay">
+  <div class="login-box">
+    <div class="login-hex"></div>
+    <div class="login-title">Data Health</div>
+    <div class="login-sub">Enter your access code to continue</div>
+    <input id="login-input" class="login-field" type="password" placeholder="Access code" autocomplete="current-password">
+    <button class="login-btn" onclick="attemptLogin()">Sign In</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
 
 <!-- HEADER -->
 <div class="header">
@@ -1357,9 +1382,36 @@ function esc(p){ return JSON.stringify(p).replace(/"/g,'&quot;'); }
 function mb(v) { if(!v) return `<span style="font-family:var(--mono);font-size:13px;color:var(--muted)">NA</span>`; return `<div class="mbar"><div class="mbar-bg"><div class="mbar-fill" style="width:${v}%;background:${sc(v)}"></div></div><div class="mbar-lbl">${v}%</div></div>`; }
 
 // ══════════════════════════════════════════
+//  AUTH — login overlay
+// ══════════════════════════════════════════
+const ACCESS_CODE = 'm4gis';   // ← change this to your preferred password
+
+function attemptLogin() {
+  const val = document.getElementById('login-input').value;
+  if (val === ACCESS_CODE) {
+    sessionStorage.setItem('dhr_auth', '1');
+    document.getElementById('login-overlay').classList.add('hidden');
+    loadData();
+  } else {
+    const err = document.getElementById('login-err');
+    err.textContent = 'Incorrect access code.';
+    document.getElementById('login-input').value = '';
+    document.getElementById('login-input').focus();
+    setTimeout(() => err.textContent = '', 3000);
+  }
+}
+
+document.getElementById('login-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') attemptLogin();
+});
+
+// ══════════════════════════════════════════
 //  INIT — auto-load on page open
 // ══════════════════════════════════════════
-loadData();
+if (sessionStorage.getItem('dhr_auth') === '1') {
+  document.getElementById('login-overlay').classList.add('hidden');
+  loadData();
+}
 </script>
 </body>
 </html>
