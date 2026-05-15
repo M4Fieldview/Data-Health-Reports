@@ -1389,7 +1389,6 @@ const ACCESS_CODE = 'm4gis';   // ← change this to your preferred password
 function attemptLogin() {
   const val = document.getElementById('login-input').value;
   if (val === ACCESS_CODE) {
-    sessionStorage.setItem('dhr_auth', '1');
     document.getElementById('login-overlay').classList.add('hidden');
     loadData();
   } else {
@@ -1404,14 +1403,6 @@ function attemptLogin() {
 document.getElementById('login-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') attemptLogin();
 });
-
-// ══════════════════════════════════════════
-//  INIT — auto-load on page open
-// ══════════════════════════════════════════
-if (sessionStorage.getItem('dhr_auth') === '1') {
-  document.getElementById('login-overlay').classList.add('hidden');
-  loadData();
-}
 </script>
 </body>
 </html>
