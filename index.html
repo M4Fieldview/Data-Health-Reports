@@ -199,7 +199,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
     <img src="m4-logo.png" style="height:48px;width:auto;display:block;margin-bottom:18px;">
     <div class="login-title">Data Health</div>
     <div class="login-sub">Enter your access code to continue</div>
-    <input id="login-input" class="login-field" type="password" placeholder="Access code" autocomplete="current-password">
+    <input id="login-input" class="login-field" type="password" placeholder="Access code" autocomplete="off">
     <button class="login-btn" onclick="attemptLogin()">Sign In</button>
     <div class="login-err" id="login-err"></div>
   </div>
@@ -1387,7 +1387,15 @@ function mb(v) { if(!v) return `<span style="font-family:var(--mono);font-size:1
 // ══════════════════════════════════════════
 const ACCESS_CODE = 'm4gis';   // ← change this to your preferred password
 
+// Clear any stale auth state from previous versions
+sessionStorage.removeItem('dhr_auth');
+
+// Guard: only allow login after the user has interacted with the input
+let _userTyped = false;
+document.getElementById('login-input').addEventListener('input', () => { _userTyped = true; });
+
 function attemptLogin() {
+  if (!_userTyped) return;
   const val = document.getElementById('login-input').value;
   if (val === ACCESS_CODE) {
     document.getElementById('login-overlay').classList.add('hidden');
