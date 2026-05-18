@@ -40,33 +40,77 @@ for wm in dh_webmaps:
         collector_scores = {}
 
         # -------------------------
-        # HEADS
+        # HEADS (with double-collection detection)
         # -------------------------
 
-        head_total = 0
-        head_filled = 0
+        head_total   = 0
+        head_filled  = 0
+        double_heads = 0
 
+        # Pre-fetch green geometries for proximity exclusion (20 ft buffer)
+        _green_feats_for_heads = []
+        for _gl_label, _gl_title in GOLF_LAYER_SPECS:
+            if 'green' in _gl_label.lower():
+                _gurl = find_layer_url(data, _gl_title)
+                _gfl  = safe_fl(_gurl)
+                if _gfl:
+                    _green_feats_for_heads = fetch_features(
+                        _gfl, where="1=1", out_fields="OBJECTID", return_geometry=True
+                    )
+                break
+
+        # Collect all head features across all layers, tagged with their head field
+        _head_entries = []   # list of (feature, head_field)
+        _head_wkid    = 3857
         for layer_title, head_field in HEAD_LAYER_SPECS:
-
             url = find_layer_url(data, layer_title)
-            fl = safe_fl(url)
-
+            fl  = safe_fl(url)
             if not fl:
                 continue
-
-            total = count_where(fl, "1=1")
-            filled = count_where(fl, f"NOT {is_null_or_empty_sql(head_field)}")
-
-            head_total += total
-            head_filled += filled
-
-            collector_field_scores(
-                fl,
-                collector_scores,
-                "Heads",
-                value_field=head_field,
-                weight=WEIGHTS["Heads"]
+            try:
+                _head_wkid = int(
+                    fl.properties.extent.spatialReference.get(
+                        'latestWkid',
+                        fl.properties.extent.spatialReference.get('wkid', 3857)
+                    )
+                )
+            except Exception:
+                pass
+            oid_fld  = get_objectid_field(fl) or 'OBJECTID'
+            out_flds = f"{oid_fld},{head_field}"
+            if field_exists(fl, CREATOR_FIELD):
+                out_flds += f",{CREATOR_FIELD}"
+            feats = fetch_features(
+                fl, where="1=1", out_fields=out_flds, return_geometry=True
             )
+            _head_entries.extend((f, head_field) for f in feats)
+
+        # Detect duplicates (within 1 ft of each other, not near a green)
+        _dup_indices = find_double_head_indices(
+            [e[0] for e in _head_entries],
+            _green_feats_for_heads,
+            _head_wkid,
+        )
+        double_heads = len(_dup_indices)
+
+        for idx, (f, head_field) in enumerate(_head_entries):
+            is_dup  = idx in _dup_indices
+            val     = f.attributes.get(head_field)
+            has_val = val not in (None, "")
+
+            if not is_dup:
+                head_total += 1
+                if has_val:
+                    head_filled += 1
+
+            # Collector scoring — exclude duplicates
+            collector = (f.attributes.get(CREATOR_FIELD) or "Unknown").strip() or "Unknown"
+            if not is_dup:
+                add_points(
+                    collector_scores, collector, "Heads",
+                    (1.0 if has_val else 0.0) * WEIGHTS["Heads"],
+                    1.0 * WEIGHTS["Heads"]
+                )
 
         if head_total > 0:
             irrigation_items.append(
@@ -74,9 +118,15 @@ for wm in dh_webmaps:
             )
             score_irrigation.append({
                 "label": "Heads",
-                "earned": head_filled * WEIGHTS["Heads"],
-                "possible": head_total * WEIGHTS["Heads"]
+                "earned":   head_filled * WEIGHTS["Heads"],
+                "possible": head_total  * WEIGHTS["Heads"]
             })
+
+        if double_heads > 0:
+            irrigation_items.append(
+                build_count_item("Double-collected heads (excluded)", double_heads, 0)
+            )
+            print(f"  ⚠ Double-collected heads excluded: {double_heads}")
 
         # -------------------------
         # IRRIGATION POINTS

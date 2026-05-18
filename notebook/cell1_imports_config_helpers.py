@@ -541,6 +541,125 @@ def draw_bullets(draw, x0, y, lines, font=FONT_BODY, color=(30, 30, 30), indent=
 
 
 # -------------------------
+# HEAD DOUBLE-COLLECTION HELPERS
+# -------------------------
+
+def _head_coord_to_ft(dx, dy, wkid):
+    """Convert a coordinate delta to feet based on the layer's spatial reference."""
+    if wkid in (4326, 4269, 4267):
+        # Geographic degrees — approximate at mid-US latitude
+        return math.sqrt((dx * 288200.0) ** 2 + (dy * 364500.0) ** 2)
+    elif wkid in (3857, 102100, 102113):
+        # Web Mercator — convert meters to feet
+        return math.sqrt(dx ** 2 + dy ** 2) / 0.3048
+    else:
+        # Assume feet (state plane or local projected)
+        return math.sqrt(dx ** 2 + dy ** 2)
+
+
+def find_double_head_indices(
+    all_head_features,
+    green_features,
+    wkid,
+    dup_threshold_ft=1.0,
+    green_buffer_ft=20.0,
+):
+    """
+    Returns a set of list-indices into all_head_features that are
+    double-collected heads (within dup_threshold_ft of another head),
+    UNLESS either head is within green_buffer_ft of a green polygon.
+
+    Args:
+        all_head_features: flat list of Feature objects across all head layers
+        green_features:    Feature objects for the Green polygon layer
+        wkid:              spatial reference WKID of the features
+        dup_threshold_ft:  max distance (ft) to flag as a duplicate (default 1 ft)
+        green_buffer_ft:   proximity to a green that excuses a duplicate (default 20 ft)
+    """
+    if len(all_head_features) < 2:
+        return set()
+
+    # Extract point coords
+    pts = []
+    for f in all_head_features:
+        g = f.geometry or {}
+        try:
+            pts.append((float(g.get('x', 0)), float(g.get('y', 0))))
+        except Exception:
+            pts.append((0.0, 0.0))
+
+    # Build expanded green bounding boxes (native units)
+    def _native_buf(ft):
+        if wkid in (4326, 4269, 4267):
+            return ft / 288200.0, ft / 364500.0
+        elif wkid in (3857, 102100, 102113):
+            v = ft * 0.3048
+            return v, v
+        else:
+            return ft, ft
+
+    buf_x, buf_y = _native_buf(green_buffer_ft)
+    green_boxes = []
+    for gf in (green_features or []):
+        g = gf.geometry or {}
+        rings = g.get('rings', [])
+        if not rings:
+            continue
+        try:
+            all_x = [p[0] for ring in rings for p in ring]
+            all_y = [p[1] for ring in rings for p in ring]
+            green_boxes.append((
+                min(all_x) - buf_x, max(all_x) + buf_x,
+                min(all_y) - buf_y, max(all_y) + buf_y,
+            ))
+        except Exception:
+            continue
+
+    def _near_green(x, y):
+        for xmin, xmax, ymin, ymax in green_boxes:
+            if xmin <= x <= xmax and ymin <= y <= ymax:
+                return True
+        return False
+
+    # Convert threshold to native units for pre-filter
+    if wkid in (4326, 4269, 4267):
+        thr_native = dup_threshold_ft / 288200.0
+    elif wkid in (3857, 102100, 102113):
+        thr_native = dup_threshold_ft * 0.3048
+    else:
+        thr_native = dup_threshold_ft
+    thr_sq = thr_native ** 2
+
+    duplicate_indices = set()
+    n = len(pts)
+    for i in range(n):
+        if i in duplicate_indices:
+            continue
+        xi, yi = pts[i]
+        for j in range(i + 1, n):
+            if j in duplicate_indices:
+                continue
+            xj, yj = pts[j]
+            dx, dy = xi - xj, yi - yj
+            # Quick bounding-box pre-filter
+            if abs(dx) > thr_native * 2 or abs(dy) > thr_native * 2:
+                continue
+            # Squared distance pre-filter
+            if dx * dx + dy * dy > thr_sq * 4:
+                continue
+            # Precise feet distance
+            if _head_coord_to_ft(dx, dy, wkid) > dup_threshold_ft:
+                continue
+            # Within threshold — skip if either head is near a green
+            if _near_green(xi, yi) or _near_green(xj, yj):
+                continue
+            # Genuine duplicate — mark the second (higher index) as the dupe
+            duplicate_indices.add(j)
+
+    return duplicate_indices
+
+
+# -------------------------
 # COLLECTOR SCORING HELPERS
 # -------------------------
 
