@@ -537,6 +537,7 @@ function parseRow(row) {
       'Greens':           g('greens_pct'),
       'Tees':             g('tees_pct'),
       'Bunkers':          g('bunkers_pct'),
+      'Fairways':         g('fairways_pct'),
     },
     counts: {
       collectors: String(row['collectors'] || ''),
@@ -554,6 +555,7 @@ function parseRow(row) {
       'Greens':           { total: parseInt(row['greens_features_total']||0)||0,    complete: parseInt(row['greens_complete']||0)||0,             incomplete: parseInt(row['greens_incomplete']||0)||0,             unit: '' },
       'Tees':             { total: parseInt(row['tees_features_total']||0)||0,      complete: parseInt(row['tees_complete']||0)||0,               incomplete: parseInt(row['tees_incomplete']||0)||0,               unit: '' },
       'Bunkers':          { total: parseInt(row['bunkers_features_total']||0)||0,   complete: parseInt(row['bunkers_complete']||0)||0,            incomplete: parseInt(row['bunkers_incomplete']||0)||0,            unit: '' },
+      'Fairways':         { total: parseInt(row['fairways_features_total']||0)||0,  complete: parseInt(row['fairways_complete']||0)||0,           incomplete: parseInt(row['fairways_incomplete']||0)||0,           unit: '' },
     }
   };
 }
@@ -580,13 +582,31 @@ function showError(msg) {
 // ══════════════════════════════════════════
 function dates() { return Object.keys(RUNS).sort(); }
 
+// Cell 3 writes a row every run for every web map tagged "Active Projects".
+// A project that goes Dormant simply stops producing new rows, so presence in
+// the most recent run is the authoritative "still active" signal — without this
+// filter, stale rows keep retired projects on the dashboard forever.
+function activeNames(type) {
+  const ds = [...dates()].reverse();
+  const types = (type && type !== 'all') ? [type] : ['asbuilt', 'staking'];
+  const names = new Set();
+  types.forEach(t => {
+    const latest = ds.find(d => (RUNS[d] || []).some(p => p.type === t));
+    if (!latest) return;
+    (RUNS[latest] || []).forEach(p => { if (p.type === t) names.add(p.name); });
+  });
+  return names;
+}
+
 function latestByType(type) {
+  const active = activeNames(type);
   const ds = [...dates()].reverse();
   const seen = {};
   const out = [];
   ds.forEach(d => {
     RUNS[d].forEach(p => {
       if (p.type !== type) return;
+      if (!active.has(p.name)) return;
       if (!seen[p.name]) { seen[p.name]=true; out.push({...p, run_date:d}); }
     });
   });
@@ -666,6 +686,7 @@ const CAT_SYSTEMS = [
   { label:'Greens',            color:'#f87171', sys:'golf' },
   { label:'Tees',              color:'#c084fc', sys:'golf' },
   { label:'Bunkers',           color:'#facc15', sys:'golf' },
+  { label:'Fairways',          color:'#4ade80', sys:'golf' },
 ];
 
 function buildCatChart(pfx, ps) {
@@ -817,14 +838,17 @@ function renderTrends() {
   if (activeDates.length < 2) { emptyEl.style.display='block'; contentEl.style.display='none'; return; }
   emptyEl.style.display='none'; contentEl.style.display='block';
 
+  const active = activeNames(filterType);
+  const inScope = p => (filterType==='all'||p.type===filterType) && active.has(p.name);
+
   const allNames = new Set();
-  activeDates.forEach(d=>(RUNS[d]||[]).forEach(p=>{ if(filterType==='all'||p.type===filterType) allNames.add(p.name); }));
+  activeDates.forEach(d=>(RUNS[d]||[]).forEach(p=>{ if(inScope(p)) allNames.add(p.name); }));
 
   renderTrendHeat([...allNames], activeDates);
 
   if(CH.trendAvg) CH.trendAvg.destroy();
   const avgData = activeDates.map(d=>{
-    const ps=(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>0);
+    const ps=(RUNS[d]||[]).filter(p=>inScope(p)&&p.confidence_pct>0);
     if (!ps.length) return null;
     const tE = ps.reduce((s,p)=>s+(p.total_earned||0),0);
     const tP = ps.reduce((s,p)=>s+(p.total_possible||0),0);
@@ -844,9 +868,9 @@ function renderTrends() {
   CH.trendStack = new Chart(document.getElementById('trendStack'), {
     type:'bar',
     data:{ labels:activeDates.map(fmtDate), datasets:[
-      { label:'Excellent ≥98%',     data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>=98).length),              backgroundColor:'rgba(82,196,140,.75)',  borderColor:'#52C48C', borderWidth:1 },
-      { label:'Acceptable 90–97%',  data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>=90&&p.confidence_pct<98).length), backgroundColor:'rgba(200,150,58,.75)', borderColor:'#C8963A', borderWidth:1 },
-      { label:'Needs Work <90%',    data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>(filterType==='all'||p.type===filterType)&&p.confidence_pct>0&&p.confidence_pct<90).length),  backgroundColor:'rgba(176,80,64,.75)',  borderColor:'#B05040', borderWidth:1 },
+      { label:'Excellent ≥98%',     data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>inScope(p)&&p.confidence_pct>=98).length),              backgroundColor:'rgba(82,196,140,.75)',  borderColor:'#52C48C', borderWidth:1 },
+      { label:'Acceptable 90–97%',  data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>inScope(p)&&p.confidence_pct>=90&&p.confidence_pct<98).length), backgroundColor:'rgba(200,150,58,.75)', borderColor:'#C8963A', borderWidth:1 },
+      { label:'Needs Work <90%',    data:activeDates.map(d=>(RUNS[d]||[]).filter(p=>inScope(p)&&p.confidence_pct>0&&p.confidence_pct<90).length),  backgroundColor:'rgba(176,80,64,.75)',  borderColor:'#B05040', borderWidth:1 },
     ]},
     options:{ responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{position:'bottom',labels:{color:'#eeeeee',font:{family:'Outfit',size:14},boxWidth:10,padding:8}}, tooltip:TIP() },
@@ -897,8 +921,10 @@ function closePanel() { document.getElementById('panel').classList.remove('open'
 //  JOB DETAIL TAB
 // ══════════════════════════════════════════
 function buildJobDetail() {
+  const active = activeNames('all');
   const allProjects = new Map(); // name -> [dates]
   dates().forEach(d => (RUNS[d]||[]).forEach(p => {
+    if (!active.has(p.name)) return;
     if (!allProjects.has(p.name)) allProjects.set(p.name, []);
     allProjects.get(p.name).push(d);
   }));
