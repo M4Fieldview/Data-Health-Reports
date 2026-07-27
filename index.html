@@ -232,6 +232,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 <div class="info-strip">
   <span class="info-strip-text">Connected to: <b>ARCOnline Data Health Report · Google Sheets</b></span>
   <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+  <span class="info-strip-text">Active within:</span>
+  <div style="display:flex;gap:5px;flex-wrap:wrap" id="activeWinBtns">
+    <button class="sort-btn active" data-win="0"  onclick="setActiveWindow(0)">Latest Run</button>
+    <button class="sort-btn"        data-win="3"  onclick="setActiveWindow(3)">3 Mo</button>
+    <button class="sort-btn"        data-win="6"  onclick="setActiveWindow(6)">6 Mo</button>
+    <button class="sort-btn"        data-win="12" onclick="setActiveWindow(12)">1 Yr</button>
+    <button class="sort-btn"        data-win="-1" onclick="setActiveWindow(-1)">All</button>
+  </div>
   <span class="info-strip-text" style="font-style:italic;">*Confidence score is a rough number based loosely on the financial impact of each feature</span>
   <span class="status-msg" id="statusMsg"></span>
 </div>
@@ -583,17 +591,49 @@ function showError(msg) {
 function dates() { return Object.keys(RUNS).sort(); }
 
 // Cell 3 writes a row every run for every web map tagged "Active Projects".
-// A project that goes Dormant simply stops producing new rows, so presence in
-// the most recent run is the authoritative "still active" signal — without this
-// filter, stale rows keep retired projects on the dashboard forever.
+// A project that goes Dormant simply stops producing new rows, so the runs a
+// project appears in tell you when it was last active — without this filter,
+// stale rows keep retired projects on the dashboard forever.
+//
+// _activeWindow controls how far back "active" reaches, in months:
+//   0 = most recent run only (default)   3/6/12 = lookback in months   -1 = all time
+// The lookback counts from the latest run date rather than today's date, so the
+// view stays stable if the notebook hasn't run in a while.
+function activeWindowMonths() { return window._activeWindow ?? 0; }
+
+function activeWindowLabel() {
+  const w = activeWindowMonths();
+  if (w === 0)  return 'latest run';
+  if (w < 0)    return 'all time';
+  if (w % 12 === 0) return `last ${w / 12} yr`;
+  return `last ${w} mo`;
+}
+
 function activeNames(type) {
-  const ds = [...dates()].reverse();
+  const ds = [...dates()].reverse();  // newest first
   const types = (type && type !== 'all') ? [type] : ['asbuilt', 'staking'];
+  const win = activeWindowMonths();
   const names = new Set();
+
   types.forEach(t => {
-    const latest = ds.find(d => (RUNS[d] || []).some(p => p.type === t));
-    if (!latest) return;
-    (RUNS[latest] || []).forEach(p => { if (p.type === t) names.add(p.name); });
+    const typeDates = ds.filter(d => (RUNS[d] || []).some(p => p.type === t));
+    if (!typeDates.length) return;
+
+    let inWindow;
+    if (win === 0) {
+      inWindow = [typeDates[0]];      // latest run for this type
+    } else if (win < 0) {
+      inWindow = typeDates;           // all time
+    } else {
+      const cutoff = new Date(typeDates[0]);
+      cutoff.setMonth(cutoff.getMonth() - win);
+      const cutStr = cutoff.toISOString().slice(0, 10);
+      inWindow = typeDates.filter(d => d >= cutStr);
+    }
+
+    inWindow.forEach(d => (RUNS[d] || []).forEach(p => {
+      if (p.type === t) names.add(p.name);
+    }));
   });
   return names;
 }
@@ -650,7 +690,7 @@ function buildCards(pfx, ps) {
   const ac  = act.filter(p=>p.confidence_pct>=90&&p.confidence_pct<98).length;
   const nw  = act.filter(p=>p.confidence_pct<90).length;
   document.getElementById(pfx+'-cards').innerHTML = `
-    <div class="card ${scls(avg)}"><div class="card-label">Wtd Avg Confidence</div><div class="card-val">${avg.toFixed(1)}%</div><div class="card-sub">${act.length} active projects</div></div>
+    <div class="card ${scls(avg)}"><div class="card-label">Wtd Avg Confidence</div><div class="card-val">${avg.toFixed(1)}%</div><div class="card-sub">${act.length} projects · ${activeWindowLabel()}</div></div>
     <div class="card g"><div class="card-label">Excellent ≥98%</div><div class="card-val">${ex}</div><div class="card-sub">projects</div></div>
     <div class="card y"><div class="card-label">Acceptable 90–97%</div><div class="card-val">${ac}</div><div class="card-sub">projects</div></div>
     <div class="card r"><div class="card-label">Needs Work &lt;90%</div><div class="card-val">${nw}</div><div class="card-sub">projects</div></div>`;
@@ -1403,6 +1443,12 @@ function setDateRange(n) {
   window._dateRange = n;
   document.querySelectorAll('#dateRangeBtns .sort-btn').forEach(b => b.classList.toggle('active', +b.dataset.range === n));
   renderTrends();
+}
+// How far back a project counts as active. Affects every tab, so rebuild all.
+function setActiveWindow(n) {
+  window._activeWindow = n;
+  document.querySelectorAll('#activeWinBtns .sort-btn').forEach(b => b.classList.toggle('active', +b.dataset.win === n));
+  rebuild();
 }
 function fmtDate(d) { if(!d||d.length!==10) return d; return d.slice(5,7)+'-'+d.slice(8,10)+'-'+d.slice(0,4); }
 function esc(p){ return JSON.stringify(p).replace(/"/g,'&quot;'); }
