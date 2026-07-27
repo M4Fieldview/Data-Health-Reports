@@ -59,8 +59,9 @@ for wm in dh_webmaps:
                     )
                 break
 
-        # Collect all head features across all layers, tagged with their head field
-        _head_entries = []   # list of (feature, head_field)
+        # Collect all head features across all layers
+        # Each entry: (feature, head_field, oid_field_name, layer_title)
+        _head_entries = []
         _head_wkid    = 3857
         for layer_title, head_field in HEAD_LAYER_SPECS:
             url = find_layer_url(data, layer_title)
@@ -76,6 +77,14 @@ for wm in dh_webmaps:
                 )
             except Exception:
                 pass
+            # Use domain-aware fill detection: only count a head as filled when
+            # it holds a recognised coded-domain value.  Falls back to IS NULL
+            # check for non-domain fields.
+            _ltotal  = count_where(fl, "1=1")
+            _lfilled = count_where(fl, get_filled_where(fl, head_field))
+            head_total  += _ltotal
+            head_filled += _lfilled
+
             oid_fld  = get_objectid_field(fl) or 'OBJECTID'
             out_flds = f"{oid_fld},{head_field}"
             if field_exists(fl, CREATOR_FIELD):
@@ -83,7 +92,7 @@ for wm in dh_webmaps:
             feats = fetch_features(
                 fl, where="1=1", out_fields=out_flds, return_geometry=True
             )
-            _head_entries.extend((f, head_field) for f in feats)
+            _head_entries.extend((f, head_field, oid_fld, layer_title) for f in feats)
 
         # Detect duplicates (within 1 ft of each other, not near a green)
         _dup_indices = find_double_head_indices(
@@ -93,40 +102,51 @@ for wm in dh_webmaps:
         )
         double_heads = len(_dup_indices)
 
-        for idx, (f, head_field) in enumerate(_head_entries):
-            is_dup  = idx in _dup_indices
-            val     = f.attributes.get(head_field)
-            has_val = val not in (None, "")
+        # Build display bullets: "Potential double collected heads (N):" then one line per head
+        _dup_bullets = []
+        if double_heads > 0:
+            _dup_bullets.append(f"Potential double collected heads ({double_heads}):")
+            for _di in sorted(_dup_indices):
+                _df, _, _doid_fld, _dlyr = _head_entries[_di]
+                _oid_val = _df.attributes.get(_doid_fld)
+                if _oid_val is None:
+                    for _cand in ('OBJECTID', 'objectid', 'FID', 'fid'):
+                        _oid_val = _df.attributes.get(_cand)
+                        if _oid_val is not None:
+                            break
+                _dup_bullets.append(f"- {_dlyr} {_oid_val if _oid_val is not None else '?'}")
 
-            if not is_dup:
-                head_total += 1
-                if has_val:
-                    head_filled += 1
-
-            # Collector scoring — exclude duplicates
+        # Collector scoring loop (geometry features already fetched above)
+        for idx, (f, head_field, oid_fld, layer_title) in enumerate(_head_entries):
+            val       = f.attributes.get(head_field)
+            has_val   = val not in (None, "", 0, -1)   # treat 0/-1 coded-domain blanks as empty
             collector = (f.attributes.get(CREATOR_FIELD) or "Unknown").strip() or "Unknown"
-            if not is_dup:
-                add_points(
-                    collector_scores, collector, "Heads",
-                    (1.0 if has_val else 0.0) * WEIGHTS["Heads"],
-                    1.0 * WEIGHTS["Heads"]
-                )
+            add_points(
+                collector_scores, collector, "Heads",
+                (1.0 if has_val else 0.0) * WEIGHTS["Heads"],
+                1.0 * WEIGHTS["Heads"]
+            )
 
         if head_total > 0:
-            irrigation_items.append(
-                build_count_item("Head type collected", head_total, head_filled)
-            )
+            _head_item = build_count_item("Head type collected", head_total, head_filled)
+            if _dup_bullets:
+                _head_item["bullets"] = _dup_bullets
+            irrigation_items.append(_head_item)
+            # Dock 1 point (× weight) per double-collected head
+            _head_penalty = double_heads * WEIGHTS["Heads"]
             score_irrigation.append({
                 "label": "Heads",
-                "earned":   head_filled * WEIGHTS["Heads"],
-                "possible": head_total  * WEIGHTS["Heads"]
+                "earned":   max(0.0, head_filled * WEIGHTS["Heads"] - _head_penalty),
+                "possible": head_total * WEIGHTS["Heads"]
             })
 
+        print(f"  Heads: {head_filled}/{head_total} filled "
+              f"({pct(head_filled, head_total):.1f}%), "
+              f"doubles={double_heads}, penalty={double_heads * WEIGHTS['Heads']:.1f}")
+
         if double_heads > 0:
-            irrigation_items.append(
-                build_count_item("Double-collected heads (excluded)", double_heads, 0)
-            )
-            print(f"  ⚠ Double-collected heads excluded: {double_heads}")
+            print(f"  ⚠ Double-collected heads (docked {double_heads} pts): "
+                  + ", ".join(_dup_bullets[1:]))
 
         # -------------------------
         # IRRIGATION POINTS
@@ -414,6 +434,7 @@ for wm in dh_webmaps:
             "greens_pct":        _spct('Golf Features', 'Greens'),
             "tees_pct":          _spct('Golf Features', 'Tees'),
             "bunkers_pct":       _spct('Golf Features', 'Bunkers'),
+            "fairways_pct":      _spct('Golf Features', 'Fairways'),
 
             # Heads
             "heads_total":      _t(irrigation_items, 'head type'),
@@ -474,6 +495,11 @@ for wm in dh_webmaps:
             "bunkers_features_total": _t(golf_items, 'bunkers'),
             "bunkers_complete":       _f(golf_items, 'bunkers'),
             "bunkers_incomplete":     _i(golf_items, 'bunkers'),
+
+            # Fairways
+            "fairways_features_total": _t(golf_items, 'fairways'),
+            "fairways_complete":       _f(golf_items, 'fairways'),
+            "fairways_incomplete":     _i(golf_items, 'fairways'),
         }
 
         ok, msg = post_to_google_sheets(payload)

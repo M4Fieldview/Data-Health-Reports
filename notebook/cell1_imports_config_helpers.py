@@ -205,10 +205,17 @@ def search_all_items(gis: GIS, query: str, max_items: int = 10000) -> list:
 # -------------------------
 
 def find_layer_url(webmap_data: dict, layer_title: str):
-    for lyr in (webmap_data.get("operationalLayers", []) or []):
-        if lyr.get("title") == layer_title and lyr.get("url"):
-            return lyr["url"]
-    return None
+    def _search(layers):
+        for lyr in (layers or []):
+            if lyr.get("title") == layer_title and lyr.get("url"):
+                return lyr["url"]
+            nested = lyr.get("layers") or lyr.get("operationalLayers") or []
+            if nested:
+                result = _search(nested)
+                if result:
+                    return result
+        return None
+    return _search(webmap_data.get("operationalLayers", []) or [])
 
 
 def safe_fl(url: str):
@@ -250,6 +257,33 @@ def get_objectid_field(layer: FeatureLayer):
 
 def is_null_or_empty_sql(field: str) -> str:
     return f"({field} IS NULL OR {field} = '')"
+
+
+def get_filled_where(layer: FeatureLayer, field_name: str) -> str:
+    """
+    Returns a WHERE clause that counts a feature as 'filled' only when it holds
+    a recognised coded-domain value.  For non-domain fields falls back to
+    NOT (field IS NULL OR field = '').
+
+    This correctly handles layers where 'empty' entries are stored as a default
+    code (e.g. 0, -1, 'Unknown') rather than NULL.
+    """
+    try:
+        for fld in (layer.properties.fields or []):
+            if fld.get('name', '').lower() == field_name.lower():
+                domain = fld.get('domain') or {}
+                if domain.get('type') == 'codedValue':
+                    codes = [cv['code'] for cv in (domain.get('codedValues') or [])]
+                    if codes:
+                        vals = ", ".join(
+                            f"'{c}'" if isinstance(c, str) else str(c)
+                            for c in codes
+                        )
+                        return f"{field_name} IN ({vals})"
+                break
+    except Exception:
+        pass
+    return f"NOT {is_null_or_empty_sql(field_name)}"
 
 
 def count_where(layer: FeatureLayer, where: str) -> int:
@@ -826,7 +860,7 @@ def analyze_golf_layer(layer: FeatureLayer, group_label: str, collector_scores=N
     for f in features:
         total_area += get_shape_area_from_feature(f, area_field)
         hv = f.attributes.get(HOLE_FIELD)
-        if hv in (None, ""):
+        if not hv or str(hv).strip() in ("", "0"):
             missing_hole_count += 1
 
     overlap_groups = group_overlapping_polygons(features)
@@ -867,7 +901,8 @@ def analyze_golf_layer(layer: FeatureLayer, group_label: str, collector_scores=N
     for f in features:
         oidv = f.attributes.get(oid_field)
         area = get_shape_area_from_feature(f, area_field)
-        has_hole = f.attributes.get(HOLE_FIELD) not in (None, "")
+        _hv = f.attributes.get(HOLE_FIELD)
+        has_hole = bool(_hv) and str(_hv).strip() not in ("", "0")
         not_superseded = oidv not in superseded_oids
 
         if has_hole and not_superseded:
@@ -1003,11 +1038,24 @@ def render_full_report_image(metrics: dict, out_path: str, title_base: str, widt
         _, h = measure_text(draw, section_title, FONT_H3)
         y += h + 6
         for it in items:
-            lbl    = it.get("label", "")
+            lbl   = it.get("label", "")
+            itype = it.get("type", "count")
+
+            if itype == "note":
+                # Plain text line + optional bullets — no progress bar
+                draw.text((x0, y), lbl, font=FONT_BODY, fill=TEXT)
+                _, h = measure_text(draw, lbl, FONT_BODY)
+                y += h + 4
+                bullets = it.get("bullets") or []
+                if bullets:
+                    y = draw_bullets(draw, x0, y, bullets, font=FONT_SMALL, color=(30, 30, 30))
+                y += 4
+                continue
+
             total  = it.get("total", 0) or 0
             filled = it.get("filled", 0) or 0
             ipct   = it.get("pct", 0.0)
-            if it.get("type") == "length":
+            if itype == "length":
                 stat = f"{fmt_ft(filled)} / {fmt_ft(total)} ({ipct:.1f}%)"
             else:
                 stat = f"{int(filled):,} / {int(total):,} ({ipct:.1f}%)"
