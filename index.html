@@ -499,15 +499,37 @@ async function loadData() {
     setStatus('err', 'Error');
     document.getElementById('statusMsg').style.color = 'var(--red)';
     document.getElementById('statusMsg').textContent = '✗ ' + err.message;
-    showError(err.message);
+    showError(err.message + (/40[34]|Failed to fetch/.test(err.message)
+      ? ' — the Sheets feed is large and slow to build, so this is usually a timeout or a '
+        + 'blocked redirect rather than a broken deployment. Try Refresh once more.'
+      : ''));
   }
 }
 
-// Fetch JSON directly — Apps Script Web Apps support CORS with "Anyone" access
-async function fetchJSON(url) {
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return resp.json();
+// Apps Script /exec answers with a 302 to script.googleusercontent.com carrying a
+// SINGLE-USE user_content_key. Replaying that redirect (a proxy revalidating, or a
+// retry part-way through the ~17MB body) spends the key and the replay 404s — which
+// is what surfaces in the browser as "HTTP 404". So every attempt re-requests /exec
+// to mint a fresh key, with a cache-buster so no intermediary can hand back a
+// already-spent redirect. 403 is not retried: on this network that means the
+// firewall blocked it, and hammering it will not help.
+async function fetchJSON(url, tries = 3) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const u = url + (url.includes('?') ? '&' : '?') + '_cb=' + Date.now();
+      const resp = await fetch(u, { redirect: 'follow', cache: 'no-store' });
+      if (resp.status === 403) throw new Error('HTTP 403 — blocked before reaching Google');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.json();
+    } catch (e) {
+      lastErr = e;
+      if (/403/.test(e.message) || i === tries - 1) break;
+      setStatus('loading', `Retrying (${i + 2}/${tries})…`);
+      await new Promise(r => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 function parseRow(row) {
@@ -577,7 +599,7 @@ function showError(msg) {
   ['ab','sk'].forEach(pfx => {
     document.getElementById(pfx+'-loading').style.display = 'none';
     document.getElementById(pfx+'-empty').style.display = 'block';
-    document.getElementById(pfx+'-empty').querySelector('p').textContent = 'Error loading data: ' + msg + '. Make sure your Apps Script is deployed with "Anyone" access.';
+    document.getElementById(pfx+'-empty').querySelector('p').textContent = 'Error loading data: ' + msg;
     document.getElementById(pfx+'-content').style.display = 'none';
   });
   document.getElementById('trend-loading').style.display = 'none';
