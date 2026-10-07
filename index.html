@@ -572,21 +572,47 @@ function parseRow(row) {
     counts: {
       collectors: String(row['collectors'] || ''),
     },
-    catCounts: {
-      'Heads':            { total: parseInt(row['heads_total']||0)||0,              complete: parseInt(row['heads_complete']||0)||0,              incomplete: parseInt(row['heads_incomplete']||0)||0,              unit: '' },
-      'Quick Couplers':   { total: parseInt(row['quick_total']||0)||0,              complete: parseInt(row['quick_complete']||0)||0,              incomplete: parseInt(row['quick_incomplete']||0)||0,              unit: '' },
-      'Isolation Valves': { total: parseInt(row['iso_total']||0)||0,                complete: parseInt(row['iso_complete']||0)||0,                incomplete: parseInt(row['iso_incomplete']||0)||0,                unit: '' },
-      'Lateral Valves':   { total: parseInt(row['lateral_valve_total']||0)||0,      complete: parseFloat(row['lateral_valve_complete']||0)||0,    incomplete: parseFloat(row['lateral_valve_incomplete']||0)||0,    unit: '' },
-      'Lateral Pipe':     { total: parseFloat(row['lateral_ft_total']||0)||0,       complete: parseFloat(row['lateral_ft_complete']||0)||0,       incomplete: parseFloat(row['lateral_ft_incomplete']||0)||0,       unit: 'ft' },
-      'Mainline':         { total: parseFloat(row['mainline_ft_total']||0)||0,      complete: parseFloat(row['mainline_ft_complete']||0)||0,      incomplete: parseFloat(row['mainline_ft_incomplete']||0)||0,      unit: 'ft' },
-      'Basins':           { total: parseInt(row['basins_total']||0)||0,             complete: parseInt(row['basins_complete']||0)||0,             incomplete: parseInt(row['basins_incomplete']||0)||0,             unit: '' },
-      'Perf Drainage':    { total: parseFloat(row['perf_ft_total']||0)||0,          complete: parseFloat(row['perf_ft_complete']||0)||0,          incomplete: parseFloat(row['perf_ft_incomplete']||0)||0,          unit: 'ft' },
-      'Solid Drainage':   { total: parseFloat(row['solid_ft_total']||0)||0,         complete: parseFloat(row['solid_ft_complete']||0)||0,         incomplete: parseFloat(row['solid_ft_incomplete']||0)||0,         unit: 'ft' },
-      'Greens':           { total: parseInt(row['greens_features_total']||0)||0,    complete: parseInt(row['greens_complete']||0)||0,             incomplete: parseInt(row['greens_incomplete']||0)||0,             unit: '' },
-      'Tees':             { total: parseInt(row['tees_features_total']||0)||0,      complete: parseInt(row['tees_complete']||0)||0,               incomplete: parseInt(row['tees_incomplete']||0)||0,               unit: '' },
-      'Bunkers':          { total: parseInt(row['bunkers_features_total']||0)||0,   complete: parseInt(row['bunkers_complete']||0)||0,            incomplete: parseInt(row['bunkers_incomplete']||0)||0,            unit: '' },
-      'Fairways':         { total: parseInt(row['fairways_features_total']||0)||0,  complete: parseInt(row['fairways_complete']||0)||0,           incomplete: parseInt(row['fairways_incomplete']||0)||0,           unit: '' },
-    }
+    catCounts: (() => {
+      // A count column the Apps Script does not have never appears in the row at all.
+      // It has to read as "unknown", not 0 — otherwise the detail panel renders a ✓
+      // ("nothing missing") for a feature whose counts were never sent. The Sheet's
+      // golf columns have drifted from the names the notebook posts
+      // (greens_complete vs greens_features_correct), so each lookup accepts every
+      // spelling that has been in use and reports whether any of them carried a value.
+      const num = (...keys) => {
+        for (const k of keys) {
+          const val = row[k];
+          if (val !== undefined && val !== null && String(val).trim() !== '') {
+            const n = parseFloat(val);
+            if (!isNaN(n)) return { v: n, known: true };
+          }
+        }
+        return { v: 0, known: false };
+      };
+      const cc = (unit, tK, cK, iK) => {
+        const t = num(...tK), c = num(...cK), i = num(...iK);
+        return { total: t.v, complete: c.v, incomplete: i.v, known: i.known, unit };
+      };
+      return {
+        'Heads':            cc('',   ['heads_total'],            ['heads_complete'],         ['heads_incomplete']),
+        'Quick Couplers':   cc('',   ['quick_total'],            ['quick_complete'],         ['quick_incomplete']),
+        'Isolation Valves': cc('',   ['iso_total'],              ['iso_complete'],           ['iso_incomplete']),
+        'Lateral Valves':   cc('',   ['lateral_valve_total'],    ['lateral_valve_complete'], ['lateral_valve_incomplete']),
+        'Lateral Pipe':     cc('ft', ['lateral_ft_total'],       ['lateral_ft_complete'],    ['lateral_ft_incomplete']),
+        'Mainline':         cc('ft', ['mainline_ft_total'],      ['mainline_ft_complete'],   ['mainline_ft_incomplete']),
+        'Basins':           cc('',   ['basins_total'],           ['basins_complete'],        ['basins_incomplete']),
+        'Perf Drainage':    cc('ft', ['perf_ft_total'],          ['perf_ft_complete'],       ['perf_ft_incomplete']),
+        'Solid Drainage':   cc('ft', ['solid_ft_total'],         ['solid_ft_complete'],      ['solid_ft_incomplete']),
+        'Greens':           cc('',   ['greens_features_total'],  ['greens_complete',  'greens_features_correct'],
+                                                                 ['greens_incomplete',  'greens_features_incorrect',  'greens_missing_hole']),
+        'Tees':             cc('',   ['tees_features_total'],    ['tees_complete',    'tees_features_correct'],
+                                                                 ['tees_incomplete',    'tees_features_incorrect',    'tees_missing_hole']),
+        'Bunkers':          cc('',   ['bunkers_features_total'], ['bunkers_complete', 'bunkers_features_correct'],
+                                                                 ['bunkers_incomplete', 'bunkers_features_incorrect', 'bunkers_missing_hole']),
+        'Fairways':         cc('',   ['fairways_features_total', 'fairways_total_features'], ['fairways_complete'],
+                                                                 ['fairways_incomplete', 'fairways_missing_hole']),
+      };
+    })(),
   };
 }
 
@@ -955,9 +981,14 @@ function openPanel(p) {
     const total      = cc ? cc.total      : 0;
     const incomplete = cc ? cc.incomplete : 0;
     const unit       = cc ? cc.unit       : '';
+    const known      = cc ? cc.known !== false : false;
     if (total === 0 && v === 0) return '';
+    // Only claim ✓ when a count actually came back. Without `known`, a column the
+    // feed never sent reads as 0 and renders ✓ "nothing missing" beside a 0% score.
     const wrongCol = total > 0
-      ? `<span style="font-family:var(--mono);font-size:13px;min-width:80px;text-align:right;padding-right:10px;color:${incomplete > 0 ? 'var(--red)' : 'var(--green)'};flex-shrink:0">${incomplete > 0 ? '−'+incomplete.toLocaleString()+(unit ? ' '+unit : '') : '✓'}</span>`
+      ? (!known
+          ? `<span style="font-family:var(--mono);font-size:13px;min-width:80px;text-align:right;padding-right:10px;color:var(--muted);flex-shrink:0" title="This feed is not sending a missing-count for ${n}">—</span>`
+          : `<span style="font-family:var(--mono);font-size:13px;min-width:80px;text-align:right;padding-right:10px;color:${incomplete > 0 ? 'var(--red)' : 'var(--green)'};flex-shrink:0">${incomplete > 0 ? '−'+incomplete.toLocaleString()+(unit ? ' '+unit : '') : '✓'}</span>`)
       : `<span style="min-width:80px;flex-shrink:0"></span>`;
     return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div><span class="cat-pct" style="color:${sc(v)}">${v}%</span></div>`;
   }).join('');
@@ -1358,9 +1389,12 @@ function openCollectorPanel(c) {
         const total      = cc ? cc.total      : 0;
         const incomplete = cc ? cc.incomplete : 0;
         const unit       = cc ? cc.unit       : '';
+        const known      = cc ? cc.known !== false : false;
         if (total === 0 && v === 0) return '';
         const wrongCol = total > 0
-          ? `<span style="font-family:var(--mono);font-size:12px;min-width:80px;text-align:right;padding-right:10px;color:${incomplete>0?'var(--red)':'var(--green)'};flex-shrink:0">${incomplete>0?'−'+incomplete.toLocaleString()+(unit?' '+unit:''):'✓'}</span>`
+          ? (!known
+              ? `<span style="font-family:var(--mono);font-size:12px;min-width:80px;text-align:right;padding-right:10px;color:var(--muted);flex-shrink:0" title="This feed is not sending a missing-count for ${n}">—</span>`
+              : `<span style="font-family:var(--mono);font-size:12px;min-width:80px;text-align:right;padding-right:10px;color:${incomplete>0?'var(--red)':'var(--green)'};flex-shrink:0">${incomplete>0?'−'+incomplete.toLocaleString()+(unit?' '+unit:''):'✓'}</span>`)
           : `<span style="min-width:80px;flex-shrink:0"></span>`;
         return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div><span class="cat-pct" style="color:${sc(v)}">${v}%</span></div>`;
       }).filter(Boolean).join('');
