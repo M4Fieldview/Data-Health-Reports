@@ -37,6 +37,7 @@ for wm in dh_webmaps:
         score_irrigation = []
         score_drainage = []
         score_golf = []
+        golf_analysis = {}
         collector_scores = {}
 
         # -------------------------
@@ -295,6 +296,8 @@ for wm in dh_webmaps:
             if analysis["feature_total"] <= 0:
                 continue
 
+            golf_analysis[group_label] = analysis
+
             golf_items.append(
                 build_golf_item(
                     group_label,
@@ -396,6 +399,24 @@ for wm in dh_webmaps:
                 if frag in it['label'].lower():
                     return it
             return {}
+
+        # The Apps Script writes only keys that match an existing column header and
+        # never creates new columns, so the Sheet's own golf names have to be used.
+        # greens_complete / greens_incomplete have no header and were being dropped,
+        # which is why the panel had no missing-count to show for Greens or Bunkers.
+        def _ga(label, key):
+            return (golf_analysis.get(label) or {}).get(key, 0) or 0
+
+        def _ga_i(label, key):
+            try:    return int(_ga(label, key))
+            except Exception: return 0
+
+        def _ga_f(label, key):
+            try:    return round(float(_ga(label, key)), 1)
+            except Exception: return 0.0
+
+        def _ga_bad(label):
+            return max(0, _ga_i(label, 'feature_total') - _ga_i(label, 'feature_ok'))
 
         def _t(items, frag): return round(_find(items, frag).get('total',  0) or 0, 1)
         def _f(items, frag): return round(_find(items, frag).get('filled', 0) or 0, 1)
@@ -500,6 +521,46 @@ for wm in dh_webmaps:
             "fairways_features_total": _t(golf_items, 'fairways'),
             "fairways_complete":       _f(golf_items, 'fairways'),
             "fairways_incomplete":     _i(golf_items, 'fairways'),
+
+            # --- golf detail under the Sheet's existing column names ---
+            # Everything above this point posts the names the notebook has always
+            # used; these are the names the Sheet actually has headers for.
+            "greens_features_correct":   _ga_i('Greens', 'feature_ok'),
+            "greens_features_incorrect": _ga_bad('Greens'),
+            "greens_missing_hole":       _ga_i('Greens', 'missing_hole_count'),
+            "greens_overlap":            _ga_i('Greens', 'intersecting_count'),
+            "greens_sqft_total":         _ga_f('Greens', 'total_sqft'),
+            "greens_sqft_correct":       _ga_f('Greens', 'correct_sqft'),
+            "greens_sqft_incorrect":     _ga_f('Greens', 'incorrect_sqft'),
+
+            "tees_features_correct":     _ga_i('Tees', 'feature_ok'),
+            "tees_features_incorrect":   _ga_bad('Tees'),
+            "tees_missing_hole":         _ga_i('Tees', 'missing_hole_count'),
+            "tees_overlap":              _ga_i('Tees', 'intersecting_count'),
+            "tees_sqft_total":           _ga_f('Tees', 'total_sqft'),
+            "tees_sqft_correct":         _ga_f('Tees', 'correct_sqft'),
+            "tees_sqft_incorrect":       _ga_f('Tees', 'incorrect_sqft'),
+
+            "bunkers_features_correct":   _ga_i('Bunkers', 'feature_ok'),
+            "bunkers_features_incorrect": _ga_bad('Bunkers'),
+            "bunkers_missing_hole":       _ga_i('Bunkers', 'missing_hole_count'),
+            "bunkers_overlap":            _ga_i('Bunkers', 'intersecting_count'),
+            "bunkers_sqft_total":         _ga_f('Bunkers', 'total_sqft'),
+            "bunkers_sqft_correct":       _ga_f('Bunkers', 'correct_sqft'),
+            "bunkers_sqft_incorrect":     _ga_f('Bunkers', 'incorrect_sqft'),
+
+            # Fairways has headers for these three only -- no fairways_pct and no
+            # fairways_features_total. fairways_total_features is deliberately NOT
+            # sent: with no pct column to pair it with, a populated total would make
+            # the dashboard render a Fairways row at a flat 0%, which is worse than
+            # leaving it hidden. Add fairways_pct + fairways_features_total headers
+            # to the Sheet and this becomes a real row.
+            "fairways_missing_hole":     _ga_i('Fairways', 'missing_hole_count'),
+            "fairways_overlap":          _ga_i('Fairways', 'intersecting_count'),
+
+            # Double-collected heads -- headers exist, nothing was ever sent.
+            "double_heads_count": int(double_heads),
+            "double_heads_list":  "|".join(_dup_bullets[1:]) if _dup_bullets else "",
         }
 
         ok, msg = post_to_google_sheets(payload)
