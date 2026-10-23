@@ -341,6 +341,31 @@ for wm in dh_webmaps:
             if row["collector"] not in (None, "", "Unknown")
         })
 
+        # Per-collector totals: each collector's own earned/possible, summed across
+        # every category. add_points() already attributes each feature to whoever
+        # collected it, so this is their personal score, not a share of the project's.
+        #
+        # These ride inside the existing `collectors` column as
+        # "name:earned:possible|...". post_collector_scores_to_sheets() posts proper
+        # per-collector rows, but the Apps Script writes only keys that match an
+        # existing header and creates none, so not one of those rows has ever
+        # reached the Sheet -- which is why the dashboard fell back to showing every
+        # collector the project's overall score. Packing them into a column that
+        # does exist avoids needing a new header.
+        _coll_totals = {}
+        for _row in collector_scores.values():
+            _c = _row["collector"]
+            if _c in (None, "", "Unknown"):
+                continue
+            _t = _coll_totals.setdefault(_c, {"earned": 0.0, "possible": 0.0})
+            _t["earned"]   += float(_row["earned"]   or 0)
+            _t["possible"] += float(_row["possible"] or 0)
+
+        collectors_packed = "|".join(
+            f"{_c}:{round(_t['earned'], 1)}:{round(_t['possible'], 1)}"
+            for _c, _t in sorted(_coll_totals.items())
+        )
+
         metrics = {
             "as_of_week": as_of_date,
             "generated_text": generated_text,
@@ -435,7 +460,7 @@ for wm in dh_webmaps:
             "total_points_earned":   round(total_earned_points, 1),
             "total_points_possible": round(total_possible_points, 1),
             "collector_count":       len(collectors),
-            "collectors":            "|".join(collectors),
+            "collectors":            collectors_packed or "|".join(collectors),
 
             # Section-level pcts
             "irrigation_pct": _stot('Irrigation'),
