@@ -463,19 +463,36 @@ async function loadData() {
 
     RUNS = {};
     COLL_ROWS = {};
+
+    const normDate = v => {
+      let d = String(v || '').trim();
+      const o = new Date(d);
+      return isNaN(o) ? d : o.toISOString().slice(0, 10);
+    };
+    // A collector row is one naming a collector and carrying points, whether or not
+    // it is tagged row_type. The Sheet has no row_type column, so tagging cannot be
+    // relied on; shape is the dependable signal.
+    const isCollectorRow = r =>
+      (r['row_type'] || '') === 'collector_score' ||
+      (String(r['collector'] || '').trim() !== '' &&
+       (r['points_possible'] !== undefined || r['points_earned'] !== undefined));
+    const takeCollectorRow = r => {
+      if (!String(r['collector'] || '').trim()) return;
+      const d = normDate(r['run_date']);
+      if (!d) return;
+      (COLL_ROWS[d] = COLL_ROWS[d] || []).push(r);
+    };
+
+    // Collector scores may arrive in the main array or, if the Web App serves the
+    // separate collector tab, under some other top-level array. Sweep any sibling
+    // array of objects rather than depending on what that key is called.
+    Object.keys(data || {}).forEach(k => {
+      if (k === 'rows' || !Array.isArray(data[k])) return;
+      data[k].forEach(r => { if (r && typeof r === 'object' && isCollectorRow(r)) takeCollectorRow(r); });
+    });
+
     rows.forEach(row => {
-      // Collector-score rows — store separately, keyed by date
-      if ((row['row_type'] || '') === 'collector_score') {
-        const collector = (row['collector'] || '').trim();
-        if (!collector) return;
-        let dStr = String(row['run_date'] || '').trim();
-        const dObj = new Date(dStr);
-        if (!isNaN(dObj)) dStr = dObj.toISOString().slice(0, 10);
-        if (!dStr) return;
-        if (!COLL_ROWS[dStr]) COLL_ROWS[dStr] = [];
-        COLL_ROWS[dStr].push(row);
-        return;
-      }
+      if (isCollectorRow(row)) { takeCollectorRow(row); return; }
       // Project-score rows
       const p = parseRow(row);
       if (!p) return;
@@ -1209,10 +1226,25 @@ function renderCollectors() {
   const allProjects = Object.values(projectLatest)
     .filter(p => !asBuiltsOnly || p.type === 'asbuilt');
 
-  // Per-collector scores now travel on the project row itself (see parseRow), so the
-  // old COLL_ROWS aggregation is gone. It summed points_earned across every date in
-  // the window, which would have multiplied a daily-scored project by its run count;
-  // it never fired, because no collector_score row has ever reached the Sheet.
+  // Per-collector scores can arrive two ways, so both are supported:
+  //   1. proper collector rows (the separate collector tab), preferred
+  //   2. packed into the project row's collectors column, "name:earned:possible"
+  // Collector rows are read for ONE run date -- the project's latest inside the
+  // window -- and summed across that run's categories only. The previous version
+  // summed every date in the window, which would have multiplied a daily-scored
+  // project by its number of runs.
+  function collRowScores(dateStr, projectName) {
+    const out = {};
+    (COLL_ROWS[dateStr] || []).forEach(r => {
+      const c  = String(r['collector'] || '').trim();
+      const pn = String(r['project_ref'] || r['project_name'] || '').trim();
+      if (!c || pn !== projectName) return;
+      if (!out[c]) out[c] = { earned: 0, possible: 0 };
+      out[c].earned   += parseFloat(r['points_earned']   || 0);
+      out[c].possible += parseFloat(r['points_possible'] || 0);
+    });
+    return out;
+  }
 
   // Build collector map — use per-collector actual earned/possible when available
   const EXCLUDED = ['landscapes_unlimited'];
@@ -1220,7 +1252,12 @@ function renderCollectors() {
   allProjects.forEach(p => {
     const bl = range ? (projectBaseline[p.name] || null) : null;
 
-    (p.counts.collectorNames || [])
+    const rowScores = collRowScores(p._date, p.name);
+    const blScores  = bl ? collRowScores(bl._date, bl.name) : {};
+    const nameSet   = new Set(p.counts.collectorNames || []);
+    Object.keys(rowScores).forEach(n => nameSet.add(n));
+
+    [...nameSet]
       .filter(c => !EXCLUDED.includes(c.toLowerCase()))
       .forEach(c => {
         if (!map[c]) map[c] = { name: c, projects: [], earned: 0, possible: 0, totalEarned: 0, totalPossible: 0 };
@@ -1229,8 +1266,8 @@ function renderCollectors() {
         // itself. p is already the latest run inside the window and bl the latest
         // before it, so there is no summing across dates. Null means that row predates
         // per-collector scoring, and the project total is used for them as before.
-        const activeData = (p.counts.collectorScores  || {})[c] || null;
-        const baseData   = bl ? ((bl.counts.collectorScores || {})[c] || null) : null;
+        const activeData = rowScores[c] || (p.counts.collectorScores || {})[c] || null;
+        const baseData   = blScores[c]  || (bl ? (bl.counts.collectorScores || {})[c] : null) || null;
 
         const cEarned   = activeData ? activeData.earned   : (p.total_earned   || 0);
         const cPossible = activeData ? activeData.possible : (p.total_possible || 0);
