@@ -625,8 +625,9 @@ function parseRow(row) {
                                                                  ['tees_incomplete',    'tees_features_incorrect',    'tees_missing_hole']),
         'Bunkers':          cc('',   ['bunkers_features_total'], ['bunkers_complete', 'bunkers_features_correct'],
                                                                  ['bunkers_incomplete', 'bunkers_features_incorrect', 'bunkers_missing_hole']),
-        'Fairways':         cc('',   ['fairways_features_total', 'fairways_total_features'], ['fairways_complete'],
-                                                                 ['fairways_incomplete', 'fairways_missing_hole']),
+        'Fairways':         cc('',   ['fairways_features_total', 'fairways_total_features'],
+                                                                 ['fairways_complete',   'fairways_features_correct'],
+                                                                 ['fairways_incomplete', 'fairways_features_incorrect', 'fairways_missing_hole']),
       };
     })(),
   };

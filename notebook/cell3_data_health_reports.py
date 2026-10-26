@@ -440,6 +440,20 @@ for wm in dh_webmaps:
             try:    return round(float(_ga(label, key)), 1)
             except Exception: return 0.0
 
+        def _pts(sec_title, label, which):
+            for sec in score_sections:
+                if sec['title'] == sec_title:
+                    for row in sec['rows']:
+                        if row['label'] == label:
+                            return round(float(row.get(which) or 0), 1)
+            return 0.0
+
+        def _sec_pts(sec_title, which):
+            for sec in score_sections:
+                if sec['title'] == sec_title:
+                    return round(sum(float(r.get(which) or 0) for r in sec['rows']), 1)
+            return 0.0
+
         def _ga_bad(label):
             return max(0, _ga_i(label, 'feature_total') - _ga_i(label, 'feature_ok'))
 
@@ -586,6 +600,70 @@ for wm in dh_webmaps:
             # Double-collected heads -- headers exist, nothing was ever sent.
             "double_heads_count": int(double_heads),
             "double_heads_list":  "|".join(_dup_bullets[1:]) if _dup_bullets else "",
+
+            # --- Fairways, under the Sheet's own column names ---
+            # The total column is fairways_total_features, NOT fairways_features_total
+            # like every other feature group. That reversal is pre-existing; the key
+            # here matches the Sheet, not the pattern.
+            "fairways_total_features":     _ga_i('Fairways', 'feature_total'),
+            "fairways_features_correct":   _ga_i('Fairways', 'feature_ok'),
+            "fairways_features_incorrect": _ga_bad('Fairways'),
+            "fairways_sqft_total":         _ga_f('Fairways', 'total_sqft'),
+            "fairways_sqft_correct":       _ga_f('Fairways', 'correct_sqft'),
+            "fairways_sqft_incorrect":     _ga_f('Fairways', 'incorrect_sqft'),
+
+            # --- per-category points ---
+            "heads_pts_earned":         _pts('Irrigation', 'Heads', "earned"),
+            "heads_pts_possible":       _pts('Irrigation', 'Heads', "possible"),
+            "quick_pts_earned":         _pts('Irrigation', 'Quick Couplers', "earned"),
+            "quick_pts_possible":       _pts('Irrigation', 'Quick Couplers', "possible"),
+            "iso_pts_earned":           _pts('Irrigation', 'Isolation Valves', "earned"),
+            "iso_pts_possible":         _pts('Irrigation', 'Isolation Valves', "possible"),
+            "lateral_valve_pts_earned": _pts('Irrigation', 'Lateral Valves', "earned"),
+            "lateral_valve_pts_possible":_pts('Irrigation', 'Lateral Valves', "possible"),
+            "lateral_pts_earned":       _pts('Irrigation', 'Lateral Pipe', "earned"),
+            "lateral_pts_possible":     _pts('Irrigation', 'Lateral Pipe', "possible"),
+            "mainline_pts_earned":      _pts('Irrigation', 'Mainline', "earned"),
+            "mainline_pts_possible":    _pts('Irrigation', 'Mainline', "possible"),
+            "basins_pts_earned":        _pts('Drainage', 'Basins', "earned"),
+            "basins_pts_possible":      _pts('Drainage', 'Basins', "possible"),
+            "perf_pts_earned":          _pts('Drainage', 'Perf Drainage', "earned"),
+            "perf_pts_possible":        _pts('Drainage', 'Perf Drainage', "possible"),
+            "solid_pts_earned":         _pts('Drainage', 'Solid Drainage', "earned"),
+            "solid_pts_possible":       _pts('Drainage', 'Solid Drainage', "possible"),
+            "greens_pts_earned":        _pts('Golf Features', 'Greens', "earned"),
+            "greens_pts_possible":      _pts('Golf Features', 'Greens', "possible"),
+            "tees_pts_earned":          _pts('Golf Features', 'Tees', "earned"),
+            "tees_pts_possible":        _pts('Golf Features', 'Tees', "possible"),
+            "bunkers_pts_earned":       _pts('Golf Features', 'Bunkers', "earned"),
+            "bunkers_pts_possible":     _pts('Golf Features', 'Bunkers', "possible"),
+            "fairways_pts_earned":      _pts('Golf Features', 'Fairways', "earned"),
+            "fairways_pts_possible":    _pts('Golf Features', 'Fairways', "possible"),
+
+            # --- section points ---
+            "irrigation_points_earned":   _sec_pts('Irrigation', 'earned'),
+            "irrigation_points_possible": _sec_pts('Irrigation', 'possible'),
+            "drainage_points_earned":     _sec_pts('Drainage', 'earned'),
+            "drainage_points_possible":   _sec_pts('Drainage', 'possible'),
+            "golf_points_earned":         _sec_pts('Golf Features', 'earned'),
+            "golf_points_possible":       _sec_pts('Golf Features', 'possible'),
+
+            # --- scoring weights in force for this run ---
+            "weight_heads":               round(WEIGHTS.get('Heads', 0), 4),
+            "weight_quick_couplers":      round(WEIGHTS.get('Quick Couplers', 0), 4),
+            "weight_isolation_valves":    round(WEIGHTS.get('Isolation Valves', 0), 4),
+            "weight_lateral_valves":      round(WEIGHTS.get('Lateral Valves', 0), 4),
+            "weight_lateral_pipe":        round(WEIGHTS.get('Lateral Pipe', 0), 4),
+            "weight_mainline":            round(WEIGHTS.get('Mainline', 0), 4),
+            "weight_basins":              round(WEIGHTS.get('Basins', 0), 4),
+            "weight_perf_drainage":       round(WEIGHTS.get('Perf Drainage', 0), 4),
+            "weight_solid_drainage":      round(WEIGHTS.get('Solid Drainage', 0), 4),
+            "weight_greens":              round(WEIGHTS.get('Greens', 0), 4),
+            "weight_tees":                round(WEIGHTS.get('Tees', 0), 4),
+            "weight_bunkers":             round(WEIGHTS.get('Bunkers', 0), 4),
+            "weight_fairways":            round(WEIGHTS.get('Fairways', 0), 4),
+
+            "report_title": image_title,
         }
 
         ok, msg = post_to_google_sheets(payload)
