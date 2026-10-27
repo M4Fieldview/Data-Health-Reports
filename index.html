@@ -1379,6 +1379,15 @@ function renderCollectors() {
   const activeDesc   = [...activeDates].sort().reverse();
   const baselineDesc = [...baselineDates].sort().reverse();
 
+  // Whether a run was collector-scored at all decides where its names come from,
+  // and the test is per date. Not per project: a project with no rows on a date
+  // that has them everywhere else was attributed and came back empty, so nobody
+  // worked on it and its collectors column must not reintroduce them. Not per
+  // window either: "All" spans dates both before and after per-collector scoring
+  // began, and one rule for the whole span would either drop every contributor
+  // from the older runs or let the newer ones back in.
+  const dateHasCollectorRows = d => Object.keys(collIndex[d] || {}).length > 0;
+
   // Build collector map — use per-collector actual earned/possible when available
   const EXCLUDED = ['landscapes_unlimited'];
   const map = {};
@@ -1393,8 +1402,19 @@ function renderCollectors() {
     // consistent even when that run is not the one the project row describes.
     const runPossible = Object.values(rowScores)
       .reduce((sum, v) => sum + (v.possible || 0), 0);
-    const nameSet   = new Set(p.counts.collectorNames || []);
-    Object.keys(rowScores).forEach(n => nameSet.add(n));
+    // The project row's collectors column lists everyone who has ever collected on
+    // the project, not who collected on this run. Taking names from it unfiltered
+    // puts people in a window they did nothing in -- in Latest Run that is anyone
+    // who has ever touched a project that ran that day.
+    //
+    // Where the run has collector rows, they are the record of who actually worked
+    // and the column is ignored. Where it has none the column is all there is, so
+    // it is still used: those are projects whose latest run predates per-collector
+    // scoring, and dropping them would empty the view rather than narrow it.
+    const packed  = p.counts.collectorScores || {};
+    const nameSet = dateHasCollectorRows(rowLookup.date || p._date)
+      ? new Set(Object.keys(rowScores))
+      : new Set([...(p.counts.collectorNames || []), ...Object.keys(packed)]);
 
     [...nameSet]
       .filter(c => !EXCLUDED.includes(c.toLowerCase()))
