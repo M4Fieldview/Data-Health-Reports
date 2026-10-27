@@ -1346,9 +1346,20 @@ function renderCollectors() {
       const pn = String(r['project_ref'] || r['project_name'] || '').trim();
       if (!c || !pn) return;
       const t = byProject[pn] || (byProject[pn] = {});
-      const e = t[c] || (t[c] = { earned: 0, possible: 0 });
-      e.earned   += parseFloat(r['points_earned']   || 0);
-      e.possible += parseFloat(r['points_possible'] || 0);
+      const e = t[c] || (t[c] = { earned: 0, possible: 0, cats: {} });
+      const pe = parseFloat(r['points_earned']   || 0);
+      const pp = parseFloat(r['points_possible'] || 0);
+      e.earned   += pe;
+      e.possible += pp;
+      // Kept per category as well as summed. score_category uses the same labels
+      // the dashboard does -- all 13 match exactly -- so the collector panel can
+      // break a person down by component instead of showing the project's.
+      const cat = String(r['score_category'] || '').trim();
+      if (cat) {
+        const cc = e.cats[cat] || (e.cats[cat] = { earned: 0, possible: 0 });
+        cc.earned += pe;
+        cc.possible += pp;
+      }
     });
   });
 
@@ -1451,7 +1462,8 @@ function renderCollectors() {
         // fallback. Without it the fallback renders as "this person scored exactly
         // the project average", which is a claim the data does not make.
         map[c].projects.push({ ...p, _earnedInRange: earnedInRange, _collEarned: cEarned, _collPossible: cPossible,
-                               _collReal: !!activeData, _collDate: rowLookup.date, _runPossible: runPossible, _baseline: bl });
+                               _collReal: !!activeData, _collDate: rowLookup.date, _runPossible: runPossible,
+                               _collCats: (activeData && activeData.cats) || null, _baseline: bl });
         map[c].earned        += earnedInRange;
         map[c].available     += availableInRange;
         map[c].possible      += cPossible;
@@ -1656,31 +1668,45 @@ function openCollectorPanel(c) {
             : `<span style="font-family:var(--mono);font-size:12px;color:var(--muted)"> · no change</span>`)
         : '';
 
-      // Component breakdown using catCounts
-      const catRows = Object.entries(p.categories||{}).map(([n, v]) => {
-        const cc         = p.catCounts && p.catCounts[n];
-        const total      = cc ? cc.total      : 0;
-        const incomplete = cc ? cc.incomplete : 0;
-        const unit       = cc ? cc.unit       : '';
-        const known      = cc ? cc.known !== false : false;
-        const pctKnown   = !(p.catPctKnown && p.catPctKnown[n] === false);
-        if (total === 0 && v === 0) return '';
-        const wrongCol = total > 0
-          ? (!known
-              ? `<span style="font-family:var(--mono);font-size:12px;min-width:80px;text-align:right;padding-right:10px;color:var(--muted);flex-shrink:0" title="This feed is not sending a missing-count for ${n}">—</span>`
-              : `<span style="font-family:var(--mono);font-size:12px;min-width:80px;text-align:right;padding-right:10px;color:${incomplete>0?'var(--red)':'var(--green)'};flex-shrink:0">${incomplete>0?'−'+incomplete.toLocaleString()+(unit?' '+unit:''):'✓'}</span>`)
-          : `<span style="min-width:80px;flex-shrink:0"></span>`;
-        const barB = pctKnown
-          ? `<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div>`
-          : `<div class="cat-bar-w"><div class="cat-bar-bg"></div></div>`;
-        const derivedB = pctKnown && p.catPctDerived && p.catPctDerived[n];
-        const pctB = pctKnown
-          ? `<span class="cat-pct" style="color:${sc(v)}${derivedB ? ';border-bottom:1px dotted currentColor' : ''}"${derivedB ? ` title="Derived from feature counts — this feed sends no score for ${n}. Counted per feature, not weighted by area like the reported scores."` : ''}>${v}%</span>`
-          : `<span class="cat-pct" style="color:var(--muted)" title="This feed is not sending a score for ${n}">—</span>`;
-        return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}${barB}${pctB}</div>`;
-      }).filter(Boolean).join('');
+      // Their components, not the project's. Each row is this person's own earned
+      // and possible in that category, from the collector rows. The project's
+      // breakdown is everyone's work and belongs on the project panel, not here.
+      //
+      // Info Missing is dropped: it is a feature count, and the collector rows
+      // carry points, not counts. There is no per-person missing-count to show, so
+      // the column would either be the project's -- wrong on this panel -- or
+      // empty. Points earned against points possible says the same thing for one
+      // person and can actually be sourced.
+      const ownCats = p._collCats || null;
+      const catRows = ownCats
+        ? Object.keys(ownCats).sort((a, b) => {
+            const A = ownCats[a], B = ownCats[b];
+            const pa = A.possible > 0 ? A.earned / A.possible : 1;
+            const pb = B.possible > 0 ? B.earned / B.possible : 1;
+            return pa - pb;              // weakest first, as the project panel does
+          }).map(n => {
+            const o = ownCats[n];
+            if (!o.possible) return '';
+            const v    = Math.round(1000 * o.earned / o.possible) / 10;
+            const lost = o.possible - o.earned;
+            const ptsC = `<span style="font-family:var(--mono);font-size:12px;min-width:110px;text-align:right;padding-right:10px;color:${lost > 0.05 ? 'var(--red)' : 'var(--muted)'};flex-shrink:0" title="${lost > 0.05 ? `${Math.round(lost * 10) / 10} points outstanding` : 'Nothing outstanding'}">${Math.round(o.earned * 10) / 10} / ${Math.round(o.possible * 10) / 10}</span>`;
+            return `<div class="cat-row"><span class="cat-name">${n}</span>${ptsC}`
+                 + `<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div>`
+                 + `<span class="cat-pct" style="color:${sc(v)}">${v}%</span></div>`;
+          }).filter(Boolean).join('')
+        : '';
 
-      const ptsLine = `<span style="color:${sc(p.confidence_pct)}">${(p.total_earned||0).toLocaleString()}</span><span style="color:var(--muted)"> / ${(p.total_possible||0).toLocaleString()} pts</span>`;
+      // The person's own points and score when there are collector rows, the
+      // project's only when there are not. The panel showed the project's total
+      // regardless, so a collector's section was headed by a figure that was not
+      // theirs and did not match their own card.
+      const ownPts  = p._collReal ? p._collEarned   : (p.total_earned   || 0);
+      const ownPoss = p._collReal ? p._collPossible : (p.total_possible || 0);
+      const ownPct  = ownPoss > 0 ? Math.round(1000 * ownPts / ownPoss) / 10 : 0;
+      const r1 = n => Math.round(n * 10) / 10;
+      const ptsLine = `<span style="color:${sc(ownPct)}">${r1(ownPts).toLocaleString()}</span>`
+        + `<span style="color:var(--muted)"> / ${r1(ownPoss).toLocaleString()} pts`
+        + `${p._collReal ? '' : ' · project total, no individual score'}</span>`;
 
       return `
         <div style="background:var(--surface2);border-radius:6px;padding:14px 16px;margin-bottom:12px">
@@ -1689,12 +1715,15 @@ function openCollectorPanel(c) {
               <div style="font-size:15px;font-weight:500;color:var(--text)">${p.name}</div>
               <div style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:2px">${ptsLine}${deltaHtml}</div>
             </div>
-            <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:${sc(p.confidence_pct)};margin-left:12px;flex-shrink:0">${p.confidence_pct}%</div>
+            <div style="text-align:right;margin-left:12px;flex-shrink:0">
+              <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:${sc(ownPct)}">${ownPct}%</div>
+              <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:1px" title="The project's overall score, across everyone on it">project ${p.confidence_pct}%</div>
+            </div>
           </div>
           ${catRows ? `
             <div style="display:flex;align-items:center;padding:3px 0 5px;border-bottom:1px solid var(--border);margin-bottom:4px">
               <span style="flex:1;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Feature</span>
-              <span style="min-width:80px;flex-shrink:0;text-align:right;padding-right:10px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Info Missing</span>
+              <span style="min-width:110px;flex-shrink:0;text-align:right;padding-right:10px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Their Points</span>
               <span style="flex:1.2;margin:0 10px"></span>
               <span style="min-width:36px;text-align:right;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Score</span>
             </div>${catRows}` : ''}
