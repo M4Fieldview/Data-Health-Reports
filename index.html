@@ -1288,11 +1288,18 @@ function renderCollectors() {
   loading.style.display = 'none';
   content.style.display = 'block';
 
-  // Filter dates to the selected range
+  // Filter dates to the selected range. 0 means the latest run on its own.
+  // It deliberately takes the no-baseline path, the same one "All" uses: with a
+  // baseline the score becomes points gained in the window, which for a single
+  // run is near zero for everyone and says nothing. Without one it is the
+  // person's actual confidence on that run, which is the question being asked.
   const range = window._colDateRange;
   const latestDate = allDates[allDates.length - 1];
   let activeDates, baselineDates;
-  if (!range) {
+  if (range === 0) {
+    activeDates = [latestDate];
+    baselineDates = [];
+  } else if (!range) {
     activeDates = allDates;
     baselineDates = [];
   } else {
@@ -1445,6 +1452,7 @@ function renderCollectors() {
   }
 
   const rangeBtns = [
+    [0,   'Latest Run'],
     [7,   'Last 7'],
     [30,  'Last 30'],
     [60,  'Last 60'],
@@ -1463,7 +1471,7 @@ function renderCollectors() {
     `<button class="sort-btn${sort===s?' active':''}" onclick="window._colSort='${s}';renderCollectors()">${label}</button>`
   ).join('');
 
-  const rangeLabel = range ? `last ${range} days` : 'all time';
+  const rangeLabel = range === 0 ? `latest run (${fmtDate(latestDate)})` : range ? `last ${range} days` : 'all time';
   const uniqueCount = collectors.length;
   const typeLabel = asBuiltsOnly ? 'As-Builts' : 'All Projects';
 
@@ -1575,14 +1583,16 @@ function openCollectorPanel(c) {
   if (typeof c === 'string') c = JSON.parse(c);
   const range      = window._colDateRange;
   const cleanName  = n => n.replace(/_LandscapesM4/i,'').replace(/_landscapesm4/i,'').replace(/_/g,' ');
-  const rangeLabel = range ? `Last ${range} days` : 'All time';
+  const rangeLabel = range === 0 ? 'Latest run' : range ? `Last ${range} days` : 'All time';
 
   document.getElementById('cpn-name').textContent = cleanName(c.name);
   document.getElementById('cpn-meta').textContent = `${rangeLabel} · ${c.projects.length} project${c.projects.length!==1?'s':''}`;
 
   // Score hero
   const col = sc(c.score);
-  const scoreLabel = range ? `${rangeLabel} productivity` : 'Weighted avg confidence';
+  // 0 shares the all-time meaning -- confidence, not points gained -- because it
+  // takes the no-baseline path in renderCollectors.
+  const scoreLabel = range ? `${rangeLabel} productivity` : (range === 0 ? 'Weighted avg confidence · latest run' : 'Weighted avg confidence');
 
   // Build project breakdown sections
   const projectSections = [...c.projects]
