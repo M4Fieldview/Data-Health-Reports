@@ -189,6 +189,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 .col-proj-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;}
 .col-proj-name{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
 .col-proj-pct{font-family:var(--mono);font-size:13px;flex-shrink:0;}
+.col-proj{display:flex;flex-direction:column;gap:1px;}
+.col-proj-sub{display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);padding-bottom:2px;}
+.col-proj-sub .r{flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -1352,14 +1355,18 @@ function renderCollectors() {
   // A collector's earned/possible is self-contained, so it is safe to read from a
   // different date than the project row -- but never from outside the range, or a
   // baseline would be contaminated by scores from inside the window.
-  function collRowScores(dateStr, projectName, allowedDesc) {
+  // Returns the date actually used as well as the scores, because the two can
+  // differ and anything comparing a collector figure against the project row has
+  // to know that. Measuring a 2026-10-27 collector score against a 2026-09-22
+  // project row produced "108% of scope" before this was tracked.
+  function collRowLookup(dateStr, projectName, allowedDesc) {
     const exact = (collIndex[dateStr] || {})[projectName];
-    if (exact) return exact;
+    if (exact) return { date: dateStr, scores: exact };
     for (const d of (allowedDesc || [])) {
       const hit = (collIndex[d] || {})[projectName];
-      if (hit) return hit;
+      if (hit) return { date: d, scores: hit };
     }
-    return {};
+    return { date: null, scores: {} };
   }
   const activeDesc   = [...activeDates].sort().reverse();
   const baselineDesc = [...baselineDates].sort().reverse();
@@ -1370,8 +1377,14 @@ function renderCollectors() {
   allProjects.forEach(p => {
     const bl = range ? (projectBaseline[p.name] || null) : null;
 
-    const rowScores = collRowScores(p._date, p.name, activeDesc);
-    const blScores  = bl ? collRowScores(bl._date, bl.name, baselineDesc) : {};
+    const rowLookup = collRowLookup(p._date, p.name, activeDesc);
+    const rowScores = rowLookup.scores;
+    const blScores  = bl ? collRowLookup(bl._date, bl.name, baselineDesc).scores : {};
+    // Everyone's possible points on the run the scores actually came from. Using
+    // this as the denominator for "share of scope" keeps the figure internally
+    // consistent even when that run is not the one the project row describes.
+    const runPossible = Object.values(rowScores)
+      .reduce((sum, v) => sum + (v.possible || 0), 0);
     const nameSet   = new Set(p.counts.collectorNames || []);
     Object.keys(rowScores).forEach(n => nameSet.add(n));
 
@@ -1393,7 +1406,11 @@ function renderCollectors() {
 
         const earnedInRange = range ? Math.max(0, cEarned - blEarned) : cEarned;
 
-        map[c].projects.push({ ...p, _earnedInRange: earnedInRange, _collEarned: cEarned, _collPossible: cPossible, _baseline: bl });
+        // _collReal distinguishes a genuine per-person score from the project-total
+        // fallback. Without it the fallback renders as "this person scored exactly
+        // the project average", which is a claim the data does not make.
+        map[c].projects.push({ ...p, _earnedInRange: earnedInRange, _collEarned: cEarned, _collPossible: cPossible,
+                               _collReal: !!activeData, _collDate: rowLookup.date, _runPossible: runPossible, _baseline: bl });
         map[c].earned        += earnedInRange;
         map[c].possible      += cPossible;
         map[c].totalEarned   += cEarned;
@@ -1452,8 +1469,12 @@ function renderCollectors() {
   const cards = collectors.map(c => {
     const col = sc(c.score);
     const ini = initials(c.name);
+    // Sorted by the person's own score, worst first -- that is the column this
+    // card is about. Sorting by the project score buried a collector's weakest
+    // work on a project that happened to be scoring well overall.
+    const ownPct = x => x._collPossible > 0 ? (x._collEarned / x._collPossible) * 100 : x.confidence_pct;
     const projRows = [...c.projects]
-      .sort((a,b) => a.confidence_pct - b.confidence_pct)
+      .sort((a,b) => ownPct(a) - ownPct(b))
       .map(p => {
         const delta = Math.round(p._earnedInRange * 10) / 10;
         const deltaStr = range
@@ -1461,9 +1482,44 @@ function renderCollectors() {
            : delta < 0 ? `<span style="font-family:var(--mono);font-size:11px;color:var(--red);margin-left:4px">▼${Math.abs(delta).toLocaleString()} pts</span>`
            : `<span style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:4px">—</span>`)
           : '';
-        return `<div class="col-proj-row">
-          <span class="col-proj-name" title="${p.name}">${p.name}</span>
-          <span class="col-proj-pct" style="color:${sc(p.confidence_pct)}">${p.confidence_pct}%${deltaStr}</span>
+        // Two figures per project, because they answer different questions:
+        // the person's own earned/possible on that project, and the project's
+        // overall score. Showing only the project score -- which is what this row
+        // used to do -- tells you nothing about the individual.
+        const own     = p._collPossible > 0 ? Math.round(1000 * p._collEarned / p._collPossible) / 10 : 0;
+        // A small but real share must not round to "0% of scope", and a sub-point
+        // total must not print as "0 / 0 pts" beside a 100% score.
+        // Measured against everyone's possible points on the same run, not against
+        // the project row, which may describe a different run entirely.
+        const shareRaw = (p._collReal && p._runPossible > 0) ? 100 * p._collPossible / p._runPossible : null;
+        const share    = shareRaw === null ? null
+          : (shareRaw > 0 && shareRaw < 1 ? '<1' : String(Math.round(shareRaw)));
+        const pts = n => n > 0 && n < 10 ? (Math.round(n * 10) / 10).toLocaleString() : Math.round(n).toLocaleString();
+        const ownCell = p._collReal
+          ? `<span class="col-proj-pct" style="color:${sc(own)}" title="${cleanName(c.name)} on this project: ${p._collEarned.toLocaleString()} of ${p._collPossible.toLocaleString()} points">${own}%${deltaStr}</span>`
+          : `<span class="col-proj-pct" style="color:var(--muted)" title="No individual score for this project on this run — only the project total is known">—${deltaStr}</span>`;
+        const subLeft = p._collReal
+          ? `${pts(p._collEarned)} / ${pts(p._collPossible)} pts${share !== null ? ` · ${share}% of scope` : ''}`
+          : `no individual score`;
+        return `<div class="col-proj">
+          <div class="col-proj-row">
+            <span class="col-proj-name" title="${p.name}">${p.name}</span>
+            ${ownCell}
+          </div>
+          <div class="col-proj-sub">
+            <span>${subLeft}</span>
+            ${(() => {
+              // The project score and the individual scores can come from different
+              // runs, because a run scoring 0 is dropped from projectLatest while its
+              // collector rows survive. Say so rather than letting the two be read as
+              // one snapshot.
+              const stale = p._collReal && p._collDate && p._collDate !== p._date;
+              const t = stale
+                ? `Project score is from ${p._date}; the individual scores above are from ${p._collDate}`
+                : `The project's overall score, across everyone on it`;
+              return `<span class="r" style="color:${sc(p.confidence_pct)}${stale ? ';border-bottom:1px dotted currentColor' : ''}" title="${t}">project ${p.confidence_pct}%${stale ? ` (${p._date})` : ''}</span>`;
+            })()}
+          </div>
         </div>`;
       }).join('');
     // Meta line: show pts-in-range when range active, cumulative totals for all-time
