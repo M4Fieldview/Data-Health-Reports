@@ -436,25 +436,43 @@ const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyxjDjt1B9_bGRbNunt
 // the collector tab only when asked for by name (?tab=collector_scores).
 const COLLECTOR_TAB = 'collector_scores';
 
-// What a point is made of, per component. Points are a measurement times a weight
-// from the notebook's WEIGHTS table, so only Heads and Quick Couplers -- weight 1.0
-// per feature -- land on whole numbers. Everything else is area or length and does
-// not, which is why the breakdown shows decimals.
-const UNIT_NOTE = {
-  'Heads':            '1 point per head',
-  'Quick Couplers':   '1 point per coupler',
-  'Isolation Valves': 'Weighted per valve (5600/900 each)',
-  'Lateral Valves':   'Weighted per valve (1300/900 each)',
-  'Lateral Pipe':     'Weighted by length (5 points per 900 ft)',
-  'Mainline':         'Weighted by length (40 points per 900 ft)',
-  'Basins':           'Weighted per basin (600/900 each)',
-  'Perf Drainage':    'Weighted by length (13 points per 900 ft)',
-  'Solid Drainage':   'Weighted by length (20 points per 900 ft)',
-  'Greens':           'Weighted by area (8 points per 900 sq ft)',
-  'Tees':             'Weighted by area (1 point per 900 sq ft)',
-  'Bunkers':          'Weighted by area (6 points per 900 sq ft)',
-  'Fairways':         'Weighted by area (8 points per 900 sq ft)',
+// Points are a measurement times a weight, so dividing the weight back out
+// recovers what was actually collected. Five components are discrete features and
+// come back as exact counts: verified against the reported project totals on the
+// 2026-10-27 run, round(points / weight) matched the feature count on 127 of 127
+// project/category pairs. The rest are scored by length or area and have no
+// feature count at all -- the point value encodes feet or square feet, and how
+// many greens make up 3,561.8 sq ft is not recoverable.
+//
+// The sheet stores points to one decimal, so a derived figure carries up to
+// 0.05/weight of rounding error. On a count that is far below half a feature, so
+// rounding is exact; on feet and square feet it is a couple of units, which
+// matters only on very small quantities.
+const UNITS = {
+  'Heads':            { w: 1.0,        unit: '',      count: true  },
+  'Quick Couplers':   { w: 1.0,        unit: '',      count: true  },
+  'Isolation Valves': { w: 5600 / 900, unit: '',      count: true  },
+  'Lateral Valves':   { w: 1300 / 900, unit: '',      count: true  },
+  'Basins':           { w: 600 / 900,  unit: '',      count: true  },
+  'Lateral Pipe':     { w: 5 / 900,    unit: 'ft',    count: false },
+  'Mainline':         { w: 40 / 900,   unit: 'ft',    count: false },
+  'Perf Drainage':    { w: 13 / 900,   unit: 'ft',    count: false },
+  'Solid Drainage':   { w: 20 / 900,   unit: 'ft',    count: false },
+  'Greens':           { w: 8 / 900,    unit: 'sq ft', count: false },
+  'Tees':             { w: 1 / 900,    unit: 'sq ft', count: false },
+  'Bunkers':          { w: 6 / 900,    unit: 'sq ft', count: false },
+  'Fairways':         { w: 8 / 900,    unit: 'sq ft', count: false },
 };
+
+// Points back to what was collected. Counts round to whole features; feet and
+// square feet keep a decimal only while small, where one would otherwise vanish.
+function inUnits(points, cat) {
+  const u = UNITS[cat];
+  if (!u) return null;
+  const v = points / u.w;
+  if (u.count) return { v: Math.round(v), unit: '', pts: points };
+  return { v: v < 10 ? Math.round(v * 10) / 10 : Math.round(v), unit: u.unit, pts: points };
+}
 
 // ══════════════════════════════════════════
 //  STATE
@@ -1709,14 +1727,19 @@ function openCollectorPanel(c) {
             if (!o.possible) return '';
             const v    = Math.round(1000 * o.earned / o.possible) / 10;
             const lost = o.possible - o.earned;
-            // "pts" on every value, because without it the column reads as a count
-            // of objects and the decimals look impossible. Points are a measurement
-            // times a weight -- area for golf features, length for pipe and
-            // drainage, one per feature only for heads and quick couplers -- so
-            // most categories cannot produce whole numbers. Greens here are
-            // 3,561.8 sq ft at 8/900 = 31.7 points.
-            const unitNote = UNIT_NOTE[n] || 'weighted points';
-            const ptsC = `<span style="font-family:var(--mono);font-size:12px;min-width:132px;text-align:right;padding-right:10px;color:${lost > 0.05 ? 'var(--red)' : 'var(--muted)'};flex-shrink:0" title="${unitNote}${lost > 0.05 ? ` — ${Math.round(lost * 10) / 10} points outstanding` : ' — nothing outstanding'}">${Math.round(o.earned * 10) / 10} / ${Math.round(o.possible * 10) / 10} pts</span>`;
+            // What they actually collected, not the points it scored. Counts for
+            // discrete features, feet or square feet for the components that are
+            // measured rather than counted. Points move into the tooltip, since
+            // they are what the percentage is computed from.
+            const e = inUnits(o.earned, n), q = inUnits(o.possible, n);
+            const suffix = q && q.unit ? ` ${q.unit}` : '';
+            const body = e && q
+              ? `${e.v.toLocaleString()} / ${q.v.toLocaleString()}${suffix}`
+              : `${Math.round(o.earned * 10) / 10} / ${Math.round(o.possible * 10) / 10} pts`;
+            const tip = `${Math.round(o.earned * 10) / 10} of ${Math.round(o.possible * 10) / 10} points`
+              + `${UNITS[n] ? ` · ${UNITS[n].count ? 'counted per feature' : `measured in ${UNITS[n].unit}`}` : ''}`
+              + `${lost > 0.05 ? ` · ${Math.round(lost * 10) / 10} points outstanding` : ''}`;
+            const ptsC = `<span style="font-family:var(--mono);font-size:12px;min-width:132px;text-align:right;padding-right:10px;color:${lost > 0.05 ? 'var(--red)' : 'var(--muted)'};flex-shrink:0" title="${tip}">${body}</span>`;
             return `<div class="cat-row"><span class="cat-name">${n}</span>${ptsC}`
                  + `<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div>`
                  + `<span class="cat-pct" style="color:${sc(v)}">${v}%</span></div>`;
@@ -1750,7 +1773,7 @@ function openCollectorPanel(c) {
           ${catRows ? `
             <div style="display:flex;align-items:center;padding:3px 0 5px;border-bottom:1px solid var(--border);margin-bottom:4px">
               <span style="flex:1;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Feature</span>
-              <span style="min-width:132px;flex-shrink:0;text-align:right;padding-right:10px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)" title="Weighted points, not a count of objects. Area for golf features, length for pipe and drainage, one point per feature for heads and quick couplers — so most categories are not whole numbers.">Their Points</span>
+              <span style="min-width:132px;flex-shrink:0;text-align:right;padding-right:10px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)" title="What this person collected. Heads, quick couplers, isolation valves, lateral valves and basins are counts of features. Pipe and drainage are feet; greens, tees, bunkers and fairways are square feet — those are measured, not counted, so there is no feature count for them. Hover a row for the points behind it.">Their Work</span>
               <span style="flex:1.2;margin:0 10px"></span>
               <span style="min-width:36px;text-align:right;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Score</span>
             </div>${catRows}` : ''}
