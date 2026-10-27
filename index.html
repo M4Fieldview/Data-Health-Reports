@@ -436,6 +436,26 @@ const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyxjDjt1B9_bGRbNunt
 // the collector tab only when asked for by name (?tab=collector_scores).
 const COLLECTOR_TAB = 'collector_scores';
 
+// What a point is made of, per component. Points are a measurement times a weight
+// from the notebook's WEIGHTS table, so only Heads and Quick Couplers -- weight 1.0
+// per feature -- land on whole numbers. Everything else is area or length and does
+// not, which is why the breakdown shows decimals.
+const UNIT_NOTE = {
+  'Heads':            '1 point per head',
+  'Quick Couplers':   '1 point per coupler',
+  'Isolation Valves': 'Weighted per valve (5600/900 each)',
+  'Lateral Valves':   'Weighted per valve (1300/900 each)',
+  'Lateral Pipe':     'Weighted by length (5 points per 900 ft)',
+  'Mainline':         'Weighted by length (40 points per 900 ft)',
+  'Basins':           'Weighted per basin (600/900 each)',
+  'Perf Drainage':    'Weighted by length (13 points per 900 ft)',
+  'Solid Drainage':   'Weighted by length (20 points per 900 ft)',
+  'Greens':           'Weighted by area (8 points per 900 sq ft)',
+  'Tees':             'Weighted by area (1 point per 900 sq ft)',
+  'Bunkers':          'Weighted by area (6 points per 900 sq ft)',
+  'Fairways':         'Weighted by area (8 points per 900 sq ft)',
+};
+
 // ══════════════════════════════════════════
 //  STATE
 // ══════════════════════════════════════════
@@ -1689,7 +1709,14 @@ function openCollectorPanel(c) {
             if (!o.possible) return '';
             const v    = Math.round(1000 * o.earned / o.possible) / 10;
             const lost = o.possible - o.earned;
-            const ptsC = `<span style="font-family:var(--mono);font-size:12px;min-width:110px;text-align:right;padding-right:10px;color:${lost > 0.05 ? 'var(--red)' : 'var(--muted)'};flex-shrink:0" title="${lost > 0.05 ? `${Math.round(lost * 10) / 10} points outstanding` : 'Nothing outstanding'}">${Math.round(o.earned * 10) / 10} / ${Math.round(o.possible * 10) / 10}</span>`;
+            // "pts" on every value, because without it the column reads as a count
+            // of objects and the decimals look impossible. Points are a measurement
+            // times a weight -- area for golf features, length for pipe and
+            // drainage, one per feature only for heads and quick couplers -- so
+            // most categories cannot produce whole numbers. Greens here are
+            // 3,561.8 sq ft at 8/900 = 31.7 points.
+            const unitNote = UNIT_NOTE[n] || 'weighted points';
+            const ptsC = `<span style="font-family:var(--mono);font-size:12px;min-width:132px;text-align:right;padding-right:10px;color:${lost > 0.05 ? 'var(--red)' : 'var(--muted)'};flex-shrink:0" title="${unitNote}${lost > 0.05 ? ` — ${Math.round(lost * 10) / 10} points outstanding` : ' — nothing outstanding'}">${Math.round(o.earned * 10) / 10} / ${Math.round(o.possible * 10) / 10} pts</span>`;
             return `<div class="cat-row"><span class="cat-name">${n}</span>${ptsC}`
                  + `<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div>`
                  + `<span class="cat-pct" style="color:${sc(v)}">${v}%</span></div>`;
@@ -1723,7 +1750,7 @@ function openCollectorPanel(c) {
           ${catRows ? `
             <div style="display:flex;align-items:center;padding:3px 0 5px;border-bottom:1px solid var(--border);margin-bottom:4px">
               <span style="flex:1;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Feature</span>
-              <span style="min-width:110px;flex-shrink:0;text-align:right;padding-right:10px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Their Points</span>
+              <span style="min-width:132px;flex-shrink:0;text-align:right;padding-right:10px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)" title="Weighted points, not a count of objects. Area for golf features, length for pipe and drainage, one point per feature for heads and quick couplers — so most categories are not whole numbers.">Their Points</span>
               <span style="flex:1.2;margin:0 10px"></span>
               <span style="min-width:36px;text-align:right;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Score</span>
             </div>${catRows}` : ''}
