@@ -1457,6 +1457,19 @@ function renderCollectors() {
     ptsLost: c.totalPossible - c.totalEarned,
   }));
 
+  // A windowed range scores points gained inside the window, so someone who
+  // gained none has nothing to report: the card reads 0.0% beside a project they
+  // are at 100% on, which looks like a failure when it means "did no work in this
+  // period". tosborne in Last 7 was exactly this -- 0.0% hero, 100% project.
+  //
+  // Latest Run and All are left alone deliberately. They score confidence rather
+  // than productivity, so a person with no new points still has a real score, and
+  // dropping them would hide work that was genuinely done.
+  //
+  // A negative total is kept: losing points is activity, and hiding it would make
+  // a score that went backwards disappear instead of showing up.
+  if (range) collectors = collectors.filter(c => Math.abs(c.earned) >= 0.05);
+
   const sort = window._colSort;
   if (sort === 'score')         collectors.sort((a,b) => b.score - a.score);
   else if (sort === 'name')     collectors.sort((a,b) => a.name.localeCompare(b.name));
