@@ -428,6 +428,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 //  CONFIG — hardcoded Web App URL
 // ══════════════════════════════════════════
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyxjDjt1B9_bGRbNuntW9PfrPbwN4RF24wow_duAKFUh_3KPVspDM0PRiQIA2erLB8QvA/exec';
+// doGet serves ONE tab per request: it defaults to the project tab and returns
+// the collector tab only when asked for by name (?tab=collector_scores).
+const COLLECTOR_TAB = 'collector_scores';
 
 // ══════════════════════════════════════════
 //  STATE
@@ -452,9 +455,14 @@ async function loadData() {
   document.getElementById('statusMsg').textContent = '';
 
   try {
-    // Apps Script Web Apps require no-cors or JSONP — use a proxy-free approach
-    // by appending a callback param; Apps Script supports JSONP via ?callback=
-    const data = await fetchJSON(WEB_APP_URL);
+    // Two requests, because doGet answers with one tab at a time. The collector
+    // tab is optional: an older deployment replies {error: 'Unknown tab ...'} and
+    // a network failure resolves to null, either of which leaves the dashboard on
+    // its existing fallbacks rather than breaking the whole load.
+    const [data, collData] = await Promise.all([
+      fetchJSON(WEB_APP_URL),
+      fetchJSON(WEB_APP_URL + '?tab=' + encodeURIComponent(COLLECTOR_TAB)).catch(() => null)
+    ]);
 
     if (data.error) throw new Error(data.error);
 
@@ -483,12 +491,18 @@ async function loadData() {
       (COLL_ROWS[d] = COLL_ROWS[d] || []).push(r);
     };
 
-    // Collector scores may arrive in the main array or, if the Web App serves the
-    // separate collector tab, under some other top-level array. Sweep any sibling
-    // array of objects rather than depending on what that key is called.
-    Object.keys(data || {}).forEach(k => {
-      if (k === 'rows' || !Array.isArray(data[k])) return;
-      data[k].forEach(r => { if (r && typeof r === 'object' && isCollectorRow(r)) takeCollectorRow(r); });
+    // Collector rows come back from the collector tab under the same 'rows' key
+    // the project tab uses, so the two payloads are swept separately. Any sibling
+    // array is swept too, so a future shape change does not go unread. The project
+    // payload's own 'rows' is skipped here -- it is walked below, where a stray
+    // collector-shaped row is still picked up.
+    [data, collData].forEach(src => {
+      if (!src || src.error) return;
+      Object.keys(src).forEach(k => {
+        if (!Array.isArray(src[k])) return;
+        if (src === data && k === 'rows') return;
+        src[k].forEach(r => { if (r && typeof r === 'object' && isCollectorRow(r)) takeCollectorRow(r); });
+      });
     });
 
     rows.forEach(row => {
