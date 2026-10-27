@@ -600,6 +600,49 @@ function parseRow(row) {
     'Bunkers':          'bunkers_pct',
     'Fairways':         'fairways_pct',
   };
+
+  // The feed sends no fairways_pct, but it does send the fairways counts, and the
+  // count relationships hold exactly on every other golf category in the current
+  // feed -- correct + incorrect == total, and incorrect == missing_hole + overlap,
+  // both on all 47 rows of greens, tees and bunkers. So the score is derivable.
+  // It is count-based where the reported golf percentages are area-weighted: those
+  // two agree on 52 of 81 rows and diverge by as much as 25 points, so a derived
+  // value is flagged rather than presented as equivalent to a reported one.
+  const firstNum = (...keys) => {
+    for (const k of keys) if (has(k)) return parseFloat(row[k]);
+    return null;
+  };
+  const sumNum = (...keys) => {
+    let s = 0, any = false;
+    keys.forEach(k => { if (has(k)) { s += parseFloat(row[k]); any = true; } });
+    return any ? s : null;
+  };
+  // Returns null when nothing was collected, so the row stays hidden, and when the
+  // defect count is unknown, so an unscorable category is never shown as 0%.
+  const derivePct = (totalKeys, incorrectKeys, badKeys) => {
+    const total = firstNum(...totalKeys);
+    if (total === null || total <= 0) return null;
+    const bad = firstNum(...incorrectKeys) ?? sumNum(...badKeys);
+    if (bad === null) return null;
+    return Math.round(1000 * Math.max(0, total - bad) / total) / 10;
+  };
+  const DERIVABLE = {
+    'Fairways': [['fairways_total_features', 'fairways_features_total'],
+                 ['fairways_features_incorrect', 'fairways_incomplete'],
+                 ['fairways_missing_hole', 'fairways_overlap']],
+  };
+
+  const cats = {}, catKnown = {}, catDerived = {};
+  Object.keys(CAT_KEYS).forEach(n => {
+    cats[n]       = g(CAT_KEYS[n]);
+    catKnown[n]   = has(CAT_KEYS[n]);
+    catDerived[n] = false;
+    if (!catKnown[n] && DERIVABLE[n]) {
+      const d = derivePct(...DERIVABLE[n]);
+      if (d !== null) { cats[n] = d; catKnown[n] = true; catDerived[n] = true; }
+    }
+  });
+
   return {
     name, type, run_date: dateStr,
     confidence_pct:  g('confidence_pct'),
@@ -608,16 +651,9 @@ function parseRow(row) {
     irrigation_pct:  g('irrigation_pct'),
     drainage_pct:    g('drainage_pct'),
     golf_pct:        g('golf_pct'),
-    categories: (() => {
-      const o = {};
-      Object.keys(CAT_KEYS).forEach(n => { o[n] = g(CAT_KEYS[n]); });
-      return o;
-    })(),
-    catPctKnown: (() => {
-      const o = {};
-      Object.keys(CAT_KEYS).forEach(n => { o[n] = has(CAT_KEYS[n]); });
-      return o;
-    })(),
+    categories:      cats,
+    catPctKnown:     catKnown,
+    catPctDerived:   catDerived,
     counts: (() => {
       // The collectors column carries either bare names ("a|b", every row written
       // before this change) or name:earned:possible ("a:12.5:20|b:9:9"). Parse both:
@@ -674,9 +710,20 @@ function parseRow(row) {
                                                                  ['tees_incomplete',    'tees_features_incorrect',    'tees_missing_hole']),
         'Bunkers':          cc('',   ['bunkers_features_total'], ['bunkers_complete', 'bunkers_features_correct'],
                                                                  ['bunkers_incomplete', 'bunkers_features_incorrect', 'bunkers_missing_hole']),
-        'Fairways':         cc('',   ['fairways_features_total', 'fairways_total_features'],
-                                                                 ['fairways_complete',   'fairways_features_correct'],
-                                                                 ['fairways_incomplete', 'fairways_features_incorrect', 'fairways_missing_hole']),
+        // Fairways has no single incorrect column, so fall back to composing one the
+        // way it is composed everywhere else: incorrect == missing_hole + overlap.
+        // Taking missing_hole alone would under-report any overlapping fairway.
+        'Fairways':         (() => {
+          const base = cc('', ['fairways_features_total', 'fairways_total_features'],
+                              ['fairways_complete', 'fairways_features_correct'],
+                              ['fairways_incomplete', 'fairways_features_incorrect']);
+          if (base.known) return base;
+          const mh = num('fairways_missing_hole'), ov = num('fairways_overlap');
+          if (!mh.known && !ov.known) return base;
+          const bad = mh.v + ov.v;
+          return { total: base.total, complete: Math.max(0, base.total - bad),
+                   incomplete: bad, known: true, unit: '' };
+        })(),
       };
     })(),
   };
@@ -1051,7 +1098,10 @@ function openPanel(p) {
     // A category whose pct column the feed never sent must not print a hard 0%:
     // that reads as "scored zero" when the truth is "no score was reported".
     const pctKnown = !(p.catPctKnown && p.catPctKnown[n] === false);
-    if (total === 0 && v === 0 && pctKnown) return '';
+    // Nothing collected -> no row at all. This stays independent of pctKnown: a
+    // category with no features has nothing to report and nothing to score, so it
+    // should be absent rather than present with an em dash.
+    if (total === 0 && v === 0) return '';
     // Only claim ✓ when a count actually came back. Without `known`, a column the
     // feed never sent reads as 0 and renders ✓ "nothing missing" beside a 0% score.
     const wrongCol = total > 0
@@ -1062,8 +1112,9 @@ function openPanel(p) {
     const barA = pctKnown
       ? `<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div>`
       : `<div class="cat-bar-w"><div class="cat-bar-bg"></div></div>`;
+    const derivedA = pctKnown && p.catPctDerived && p.catPctDerived[n];
     const pctA = pctKnown
-      ? `<span class="cat-pct" style="color:${sc(v)}">${v}%</span>`
+      ? `<span class="cat-pct" style="color:${sc(v)}${derivedA ? ';border-bottom:1px dotted currentColor' : ''}"${derivedA ? ` title="Derived from feature counts — this feed sends no score for ${n}. Counted per feature, not weighted by area like the reported scores."` : ''}>${v}%</span>`
       : `<span class="cat-pct" style="color:var(--muted)" title="This feed is not sending a score for ${n}">—</span>`;
     return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}${barA}${pctA}</div>`;
   }).join('');
@@ -1473,7 +1524,7 @@ function openCollectorPanel(c) {
         const unit       = cc ? cc.unit       : '';
         const known      = cc ? cc.known !== false : false;
         const pctKnown   = !(p.catPctKnown && p.catPctKnown[n] === false);
-        if (total === 0 && v === 0 && pctKnown) return '';
+        if (total === 0 && v === 0) return '';
         const wrongCol = total > 0
           ? (!known
               ? `<span style="font-family:var(--mono);font-size:12px;min-width:80px;text-align:right;padding-right:10px;color:var(--muted);flex-shrink:0" title="This feed is not sending a missing-count for ${n}">—</span>`
@@ -1482,8 +1533,9 @@ function openCollectorPanel(c) {
         const barB = pctKnown
           ? `<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div>`
           : `<div class="cat-bar-w"><div class="cat-bar-bg"></div></div>`;
+        const derivedB = pctKnown && p.catPctDerived && p.catPctDerived[n];
         const pctB = pctKnown
-          ? `<span class="cat-pct" style="color:${sc(v)}">${v}%</span>`
+          ? `<span class="cat-pct" style="color:${sc(v)}${derivedB ? ';border-bottom:1px dotted currentColor' : ''}"${derivedB ? ` title="Derived from feature counts — this feed sends no score for ${n}. Counted per feature, not weighted by area like the reported scores."` : ''}>${v}%</span>`
           : `<span class="cat-pct" style="color:var(--muted)" title="This feed is not sending a score for ${n}">—</span>`;
         return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}${barB}${pctB}</div>`;
       }).filter(Boolean).join('');
