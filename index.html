@@ -1324,22 +1324,45 @@ function renderCollectors() {
   // Per-collector scores can arrive two ways, so both are supported:
   //   1. proper collector rows (the separate collector tab), preferred
   //   2. packed into the project row's collectors column, "name:earned:possible"
-  // Collector rows are read for ONE run date -- the project's latest inside the
-  // window -- and summed across that run's categories only. The previous version
-  // summed every date in the window, which would have multiplied a daily-scored
-  // project by its number of runs.
-  function collRowScores(dateStr, projectName) {
-    const out = {};
-    (COLL_ROWS[dateStr] || []).forEach(r => {
+  // Rows are indexed by date -> project -> collector, summing a run's categories
+  // into one earned/possible per person. Only one date is ever read, so a project
+  // scored daily is not multiplied by its number of runs.
+  const collIndex = {};
+  Object.keys(COLL_ROWS).forEach(d => {
+    const byProject = collIndex[d] = {};
+    COLL_ROWS[d].forEach(r => {
       const c  = String(r['collector'] || '').trim();
       const pn = String(r['project_ref'] || r['project_name'] || '').trim();
-      if (!c || pn !== projectName) return;
-      if (!out[c]) out[c] = { earned: 0, possible: 0 };
-      out[c].earned   += parseFloat(r['points_earned']   || 0);
-      out[c].possible += parseFloat(r['points_possible'] || 0);
+      if (!c || !pn) return;
+      const t = byProject[pn] || (byProject[pn] = {});
+      const e = t[c] || (t[c] = { earned: 0, possible: 0 });
+      e.earned   += parseFloat(r['points_earned']   || 0);
+      e.possible += parseFloat(r['points_possible'] || 0);
     });
-    return out;
+  });
+
+  // The project row's own date is tried first, then the most recent date in the
+  // allowed range that has rows for this project. The second step matters because
+  // the two do not always agree: a project that scores 0 is dropped from
+  // projectLatest by the confidence_pct > 0 filter, so its "latest run" is an
+  // older date while its collector rows sit on the newer one. Matching on date
+  // alone would throw those rows away and fall back to the project total, which
+  // is the behaviour this feature exists to remove. 2495 The Broadmoor Staking
+  // does exactly this: collector rows on 2026-10-27, latest scored run 2026-09-22.
+  // A collector's earned/possible is self-contained, so it is safe to read from a
+  // different date than the project row -- but never from outside the range, or a
+  // baseline would be contaminated by scores from inside the window.
+  function collRowScores(dateStr, projectName, allowedDesc) {
+    const exact = (collIndex[dateStr] || {})[projectName];
+    if (exact) return exact;
+    for (const d of (allowedDesc || [])) {
+      const hit = (collIndex[d] || {})[projectName];
+      if (hit) return hit;
+    }
+    return {};
   }
+  const activeDesc   = [...activeDates].sort().reverse();
+  const baselineDesc = [...baselineDates].sort().reverse();
 
   // Build collector map — use per-collector actual earned/possible when available
   const EXCLUDED = ['landscapes_unlimited'];
@@ -1347,8 +1370,8 @@ function renderCollectors() {
   allProjects.forEach(p => {
     const bl = range ? (projectBaseline[p.name] || null) : null;
 
-    const rowScores = collRowScores(p._date, p.name);
-    const blScores  = bl ? collRowScores(bl._date, bl.name) : {};
+    const rowScores = collRowScores(p._date, p.name, activeDesc);
+    const blScores  = bl ? collRowScores(bl._date, bl.name, baselineDesc) : {};
     const nameSet   = new Set(p.counts.collectorNames || []);
     Object.keys(rowScores).forEach(n => nameSet.add(n));
 
