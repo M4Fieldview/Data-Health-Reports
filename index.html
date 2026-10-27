@@ -272,7 +272,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
     <div class="slabel">Confidence Score by Project</div>
     <div class="chart-grid wide"><div class="cc"><div style="height:250px"><canvas id="ab-bar"></canvas></div></div></div>
     <div class="chart-grid">
-      <div class="cc"><div class="cc-title">Component Averages — active projects</div><div style="height:320px"><canvas id="ab-cat"></canvas></div></div>
+      <div class="cc"><div class="cc-title">Component Averages — active projects</div><div style="height:460px"><canvas id="ab-cat"></canvas></div></div>
     </div>
     <div class="slabel">All As-Built Projects</div>
     <div class="table-wrap">
@@ -308,7 +308,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
     <div class="slabel">Confidence Score by Project</div>
     <div class="chart-grid wide"><div class="cc"><div style="height:220px"><canvas id="sk-bar"></canvas></div></div></div>
     <div class="chart-grid">
-      <div class="cc"><div class="cc-title">Component Averages — active projects</div><div style="height:320px"><canvas id="sk-cat"></canvas></div></div>
+      <div class="cc"><div class="cc-title">Component Averages — active projects</div><div style="height:460px"><canvas id="sk-cat"></canvas></div></div>
     </div>
     <div class="slabel">All Staking Projects</div>
     <div class="table-wrap">
@@ -905,7 +905,10 @@ function buildCatChart(pfx, ps) {
         tooltip:{...TIP(),callbacks:{label:c=>` ${c.raw.toFixed(1)}%`}},
         subtitle:{display:true,text:['■ Irrigation  ■ Drainage  ■ Golf'],color:['#eeeeee'],font:{family:'Outfit',size:14},padding:{bottom:6}}
       },
-      scales:{ x:{...YS(),min:catMin,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}}, y:{ticks:{color:'#eeeeee',font:{size:15}},grid:{color:'rgba(58,110,90,.4)'}} }
+      // autoSkip drops every other label once the 13 components stop fitting the
+      // canvas, which hides the name of a bar that is still drawn. Every component
+      // is named, and the canvas is tall enough below for all of them.
+      scales:{ x:{...YS(),min:catMin,max:100,ticks:{...YS().ticks,callback:v=>v+'%'}}, y:{ticks:{color:'#eeeeee',font:{size:14},autoSkip:false},grid:{color:'rgba(58,110,90,.4)'}} }
     }
   });
 }
