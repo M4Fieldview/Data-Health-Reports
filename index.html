@@ -1419,7 +1419,7 @@ function renderCollectors() {
     [...nameSet]
       .filter(c => !EXCLUDED.includes(c.toLowerCase()))
       .forEach(c => {
-        if (!map[c]) map[c] = { name: c, projects: [], earned: 0, possible: 0, totalEarned: 0, totalPossible: 0 };
+        if (!map[c]) map[c] = { name: c, projects: [], earned: 0, possible: 0, available: 0, totalEarned: 0, totalPossible: 0 };
 
         // Each person's own earned/possible for this project, read off the run row
         // itself. p is already the latest run inside the window and bl the latest
@@ -1434,12 +1434,26 @@ function renderCollectors() {
 
         const earnedInRange = range ? Math.max(0, cEarned - blEarned) : cEarned;
 
+        // What was open to this person during the window: work still outstanding at
+        // the baseline, plus scope added since. Algebraically
+        //   (cPossible - blPossible) + (blPossible - blEarned) = cPossible - blEarned
+        // so the baseline's possible cancels and only its earned matters. With no
+        // baseline the project is new to the window and all of it came up inside it.
+        //
+        // This is the denominator the windowed score needs. Dividing by the whole
+        // project scope instead made anyone on a large project look terrible however
+        // good their data was: a week's work on a 10,000 point project could not
+        // exceed a few percent. Against what was actually available, the number can
+        // reach 100% and means "of the work open to them, how much did they finish".
+        const availableInRange = range ? Math.max(0, cPossible - blEarned) : cPossible;
+
         // _collReal distinguishes a genuine per-person score from the project-total
         // fallback. Without it the fallback renders as "this person scored exactly
         // the project average", which is a claim the data does not make.
         map[c].projects.push({ ...p, _earnedInRange: earnedInRange, _collEarned: cEarned, _collPossible: cPossible,
                                _collReal: !!activeData, _collDate: rowLookup.date, _runPossible: runPossible, _baseline: bl });
         map[c].earned        += earnedInRange;
+        map[c].available     += availableInRange;
         map[c].possible      += cPossible;
         map[c].totalEarned   += cEarned;
         map[c].totalPossible += cPossible;
@@ -1448,11 +1462,15 @@ function renderCollectors() {
 
   let collectors = Object.values(map).map(c => ({
     ...c,
-    // Range mode: score = pts earned in window / total scope (productivity %)
-    // All-time mode: score = cumulative earned / total scope (confidence %)
-    score: c.totalPossible > 0
-      ? (range ? (c.earned / c.totalPossible) * 100 : (c.totalEarned / c.totalPossible) * 100)
-      : 0,
+    // Windowed range: pts earned in the window / pts that were available in it.
+    // Latest Run and All: cumulative earned / total scope (confidence %).
+    //
+    // Capped at 100. The denominator can fall below the numerator if a project's
+    // scope shrinks mid-window -- features deleted after being collected -- which
+    // would otherwise print a score above 100%.
+    score: range
+      ? (c.available > 0 ? Math.min(100, (c.earned / c.available) * 100) : 0)
+      : (c.totalPossible > 0 ? (c.totalEarned / c.totalPossible) * 100 : 0),
     // ptsLost = total outstanding work across their projects (always cumulative)
     ptsLost: c.totalPossible - c.totalEarned,
   }));
@@ -1466,9 +1484,9 @@ function renderCollectors() {
   // than productivity, so a person with no new points still has a real score, and
   // dropping them would hide work that was genuinely done.
   //
-  // A negative total is kept: losing points is activity, and hiding it would make
-  // a score that went backwards disappear instead of showing up.
-  if (range) collectors = collectors.filter(c => Math.abs(c.earned) >= 0.05);
+  // earnedInRange is clamped at 0, so a total is never negative here; the test is
+  // simply "gained nothing". A score that goes backwards shows up as 0 gained.
+  if (range) collectors = collectors.filter(c => c.earned >= 0.05);
 
   const sort = window._colSort;
   if (sort === 'score')         collectors.sort((a,b) => b.score - a.score);
@@ -1605,7 +1623,9 @@ function renderCollectors() {
     </div>
     <div class="col-grid">${cards}</div>
     <div style="font-size:12px;color:var(--muted);font-style:italic;margin-top:4px">
-      Score is a points-weighted average across all projects the collector contributed to within the selected date range. Projects with multiple collectors share the same project score.
+      ${range
+        ? `Score is points completed in the ${rangeLabel} divided by the points that were available to complete in it — work outstanding at the start, plus scope added since. Collectors who completed nothing in this period are not listed.`
+        : `Score is each collector's own points earned against their own points possible, weighted across their projects. Two people on one project can and do score differently.`}
     </div>`;
 }
 
@@ -1625,7 +1645,7 @@ function openCollectorPanel(c) {
   const col = sc(c.score);
   // 0 shares the all-time meaning -- confidence, not points gained -- because it
   // takes the no-baseline path in renderCollectors.
-  const scoreLabel = range ? `${rangeLabel} productivity` : (range === 0 ? 'Weighted avg confidence · latest run' : 'Weighted avg confidence');
+  const scoreLabel = range ? `Completed of available · ${rangeLabel.toLowerCase()}` : (range === 0 ? 'Weighted avg confidence · latest run' : 'Weighted avg confidence');
 
   // Build project breakdown sections
   const projectSections = [...c.projects]
