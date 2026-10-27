@@ -577,6 +577,29 @@ function parseRow(row) {
   const g = k => parseFloat(row[k] || 0) || 0;
   const ge = () => g('total_points_earned')  || g('points_earned');
   const gp = () => g('total_points_possible') || g('points_possible');
+  // g() collapses an absent column to 0, which is right for arithmetic and wrong
+  // for display: a category whose pct column the feed never sent is not a project
+  // scoring zero. has() keeps the two apart so the renderers can say "no value".
+  const has = k => {
+    const x = row[k];
+    if (x === null || x === undefined || String(x).trim() === '') return false;
+    return !isNaN(parseFloat(x));
+  };
+  const CAT_KEYS = {
+    'Heads':            'heads_pct',
+    'Quick Couplers':   'quick_pct',
+    'Isolation Valves': 'iso_pct',
+    'Lateral Valves':   'lateral_valve_pct',
+    'Lateral Pipe':     'lateral_pct',
+    'Mainline':         'mainline_pct',
+    'Basins':           'basins_pct',
+    'Perf Drainage':    'perf_pct',
+    'Solid Drainage':   'solid_pct',
+    'Greens':           'greens_pct',
+    'Tees':             'tees_pct',
+    'Bunkers':          'bunkers_pct',
+    'Fairways':         'fairways_pct',
+  };
   return {
     name, type, run_date: dateStr,
     confidence_pct:  g('confidence_pct'),
@@ -585,21 +608,16 @@ function parseRow(row) {
     irrigation_pct:  g('irrigation_pct'),
     drainage_pct:    g('drainage_pct'),
     golf_pct:        g('golf_pct'),
-    categories: {
-      'Heads':            g('heads_pct'),
-      'Quick Couplers':   g('quick_pct'),
-      'Isolation Valves': g('iso_pct'),
-      'Lateral Valves':   g('lateral_valve_pct'),
-      'Lateral Pipe':     g('lateral_pct'),
-      'Mainline':         g('mainline_pct'),
-      'Basins':           g('basins_pct'),
-      'Perf Drainage':    g('perf_pct'),
-      'Solid Drainage':   g('solid_pct'),
-      'Greens':           g('greens_pct'),
-      'Tees':             g('tees_pct'),
-      'Bunkers':          g('bunkers_pct'),
-      'Fairways':         g('fairways_pct'),
-    },
+    categories: (() => {
+      const o = {};
+      Object.keys(CAT_KEYS).forEach(n => { o[n] = g(CAT_KEYS[n]); });
+      return o;
+    })(),
+    catPctKnown: (() => {
+      const o = {};
+      Object.keys(CAT_KEYS).forEach(n => { o[n] = has(CAT_KEYS[n]); });
+      return o;
+    })(),
     counts: (() => {
       // The collectors column carries either bare names ("a|b", every row written
       // before this change) or name:earned:possible ("a:12.5:20|b:9:9"). Parse both:
@@ -1030,7 +1048,10 @@ function openPanel(p) {
     const incomplete = cc ? cc.incomplete : 0;
     const unit       = cc ? cc.unit       : '';
     const known      = cc ? cc.known !== false : false;
-    if (total === 0 && v === 0) return '';
+    // A category whose pct column the feed never sent must not print a hard 0%:
+    // that reads as "scored zero" when the truth is "no score was reported".
+    const pctKnown = !(p.catPctKnown && p.catPctKnown[n] === false);
+    if (total === 0 && v === 0 && pctKnown) return '';
     // Only claim ✓ when a count actually came back. Without `known`, a column the
     // feed never sent reads as 0 and renders ✓ "nothing missing" beside a 0% score.
     const wrongCol = total > 0
@@ -1038,7 +1059,13 @@ function openPanel(p) {
           ? `<span style="font-family:var(--mono);font-size:13px;min-width:80px;text-align:right;padding-right:10px;color:var(--muted);flex-shrink:0" title="This feed is not sending a missing-count for ${n}">—</span>`
           : `<span style="font-family:var(--mono);font-size:13px;min-width:80px;text-align:right;padding-right:10px;color:${incomplete > 0 ? 'var(--red)' : 'var(--green)'};flex-shrink:0">${incomplete > 0 ? '−'+incomplete.toLocaleString()+(unit ? ' '+unit : '') : '✓'}</span>`)
       : `<span style="min-width:80px;flex-shrink:0"></span>`;
-    return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div><span class="cat-pct" style="color:${sc(v)}">${v}%</span></div>`;
+    const barA = pctKnown
+      ? `<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div>`
+      : `<div class="cat-bar-w"><div class="cat-bar-bg"></div></div>`;
+    const pctA = pctKnown
+      ? `<span class="cat-pct" style="color:${sc(v)}">${v}%</span>`
+      : `<span class="cat-pct" style="color:var(--muted)" title="This feed is not sending a score for ${n}">—</span>`;
+    return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}${barA}${pctA}</div>`;
   }).join('');
   const catHeader = `<div style="display:flex;align-items:center;padding:4px 0 6px;border-bottom:1px solid var(--border);margin-bottom:2px">
     <span style="flex:1;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Feature</span>
@@ -1445,13 +1472,20 @@ function openCollectorPanel(c) {
         const incomplete = cc ? cc.incomplete : 0;
         const unit       = cc ? cc.unit       : '';
         const known      = cc ? cc.known !== false : false;
-        if (total === 0 && v === 0) return '';
+        const pctKnown   = !(p.catPctKnown && p.catPctKnown[n] === false);
+        if (total === 0 && v === 0 && pctKnown) return '';
         const wrongCol = total > 0
           ? (!known
               ? `<span style="font-family:var(--mono);font-size:12px;min-width:80px;text-align:right;padding-right:10px;color:var(--muted);flex-shrink:0" title="This feed is not sending a missing-count for ${n}">—</span>`
               : `<span style="font-family:var(--mono);font-size:12px;min-width:80px;text-align:right;padding-right:10px;color:${incomplete>0?'var(--red)':'var(--green)'};flex-shrink:0">${incomplete>0?'−'+incomplete.toLocaleString()+(unit?' '+unit:''):'✓'}</span>`)
           : `<span style="min-width:80px;flex-shrink:0"></span>`;
-        return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div><span class="cat-pct" style="color:${sc(v)}">${v}%</span></div>`;
+        const barB = pctKnown
+          ? `<div class="cat-bar-w"><div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${v}%;background:${sc(v)}"></div></div></div>`
+          : `<div class="cat-bar-w"><div class="cat-bar-bg"></div></div>`;
+        const pctB = pctKnown
+          ? `<span class="cat-pct" style="color:${sc(v)}">${v}%</span>`
+          : `<span class="cat-pct" style="color:var(--muted)" title="This feed is not sending a score for ${n}">—</span>`;
+        return `<div class="cat-row"><span class="cat-name">${n}</span>${wrongCol}${barB}${pctB}</div>`;
       }).filter(Boolean).join('');
 
       const ptsLine = `<span style="color:${sc(p.confidence_pct)}">${(p.total_earned||0).toLocaleString()}</span><span style="color:var(--muted)"> / ${(p.total_possible||0).toLocaleString()} pts</span>`;
