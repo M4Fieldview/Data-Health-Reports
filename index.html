@@ -186,12 +186,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 .col-score{font-family:var(--mono);font-size:26px;font-weight:700;}
 .col-meta{font-size:13px;color:var(--muted);font-family:var(--mono);}
 .col-projects{display:flex;flex-direction:column;gap:4px;border-top:1px solid rgba(255,255,255,.06);padding-top:8px;}
-.col-proj-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;}
-.col-proj-name{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
-.col-proj-pct{font-family:var(--mono);font-size:13px;flex-shrink:0;}
-.col-proj{display:flex;flex-direction:column;gap:1px;}
-.col-proj-sub{display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);padding-bottom:2px;}
-.col-proj-sub .r{flex-shrink:0;}
+.col-proj-row{display:flex;align-items:center;gap:10px;font-size:13px;padding:3px 0;}
+.col-proj-name{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;}
+.col-proj-num{font-family:var(--mono);font-size:13px;width:54px;text-align:right;flex-shrink:0;}
+.col-proj-head{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--border);}
+.col-proj-head .col-proj-name{color:var(--muted);}
+.col-proj-head .col-proj-num{font-size:10px;}
+@media(max-width:560px){.col-proj-num.share{display:none;}}
 </style>
 </head>
 <body>
@@ -1482,46 +1483,44 @@ function renderCollectors() {
            : delta < 0 ? `<span style="font-family:var(--mono);font-size:11px;color:var(--red);margin-left:4px">▼${Math.abs(delta).toLocaleString()} pts</span>`
            : `<span style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:4px">—</span>`)
           : '';
-        // Two figures per project, because they answer different questions:
-        // the person's own earned/possible on that project, and the project's
-        // overall score. Showing only the project score -- which is what this row
-        // used to do -- tells you nothing about the individual.
+        // Three aligned columns under one header, rather than two stacked lines
+        // of unlabelled numbers. The header names the person, so the first column
+        // needs no explaining and cannot be confused with the project's own score.
         const own     = p._collPossible > 0 ? Math.round(1000 * p._collEarned / p._collPossible) / 10 : 0;
-        // A small but real share must not round to "0% of scope", and a sub-point
-        // total must not print as "0 / 0 pts" beside a 100% score.
-        // Measured against everyone's possible points on the same run, not against
-        // the project row, which may describe a different run entirely.
         const shareRaw = (p._collReal && p._runPossible > 0) ? 100 * p._collPossible / p._runPossible : null;
         const share    = shareRaw === null ? null
           : (shareRaw > 0 && shareRaw < 1 ? '<1' : String(Math.round(shareRaw)));
         const pts = n => n > 0 && n < 10 ? (Math.round(n * 10) / 10).toLocaleString() : Math.round(n).toLocaleString();
+        // The project score and the individual scores can come from different runs,
+        // because a run scoring 0 is dropped from projectLatest while its collector
+        // rows survive. Mark it rather than letting both read as one snapshot.
+        const stale = p._collReal && p._collDate && p._collDate !== p._date;
+
         const ownCell = p._collReal
-          ? `<span class="col-proj-pct" style="color:${sc(own)}" title="${cleanName(c.name)} on this project: ${p._collEarned.toLocaleString()} of ${p._collPossible.toLocaleString()} points">${own}%${deltaStr}</span>`
-          : `<span class="col-proj-pct" style="color:var(--muted)" title="No individual score for this project on this run — only the project total is known">—${deltaStr}</span>`;
-        const subLeft = p._collReal
-          ? `${pts(p._collEarned)} / ${pts(p._collPossible)} pts${share !== null ? ` · ${share}% of scope` : ''}`
-          : `no individual score`;
-        return `<div class="col-proj">
-          <div class="col-proj-row">
-            <span class="col-proj-name" title="${p.name}">${p.name}</span>
-            ${ownCell}
-          </div>
-          <div class="col-proj-sub">
-            <span>${subLeft}</span>
-            ${(() => {
-              // The project score and the individual scores can come from different
-              // runs, because a run scoring 0 is dropped from projectLatest while its
-              // collector rows survive. Say so rather than letting the two be read as
-              // one snapshot.
-              const stale = p._collReal && p._collDate && p._collDate !== p._date;
-              const t = stale
-                ? `Project score is from ${p._date}; the individual scores above are from ${p._collDate}`
-                : `The project's overall score, across everyone on it`;
-              return `<span class="r" style="color:${sc(p.confidence_pct)}${stale ? ';border-bottom:1px dotted currentColor' : ''}" title="${t}">project ${p.confidence_pct}%${stale ? ` (${p._date})` : ''}</span>`;
-            })()}
-          </div>
+          ? `<span class="col-proj-num" style="color:${sc(own)}" title="${cleanName(c.name)}: ${pts(p._collEarned)} of ${pts(p._collPossible)} points on this project">${own}%${deltaStr}</span>`
+          : `<span class="col-proj-num" style="color:var(--muted)" title="No individual score for this project on this run — only the project total is known">—</span>`;
+        const shareCell = share !== null
+          ? `<span class="col-proj-num share" style="color:var(--muted)" title="${pts(p._collPossible)} of the ${pts(p._runPossible)} points on this run belong to ${cleanName(c.name)}">${share}%</span>`
+          : `<span class="col-proj-num share" style="color:var(--muted)">—</span>`;
+        const projCell = `<span class="col-proj-num" style="color:var(--muted)${stale ? ';border-bottom:1px dotted currentColor' : ''}" title="${stale
+          ? `Project score is from ${p._date}; ${cleanName(c.name)}'s score is from ${p._collDate}`
+          : `The project's overall score, across everyone on it`}">${p.confidence_pct}%</span>`;
+
+        return `<div class="col-proj-row">
+          <span class="col-proj-name" title="${p.name}">${p.name}</span>
+          ${ownCell}${shareCell}${projCell}
         </div>`;
       }).join('');
+    // One header per card. The first column is named after the person, which is
+    // what makes the three numbers readable without a legend.
+    const whoCol = cleanName(c.name).split(' ')[0];
+    const projHead = c.projects.length ? `<div class="col-proj-head">
+      <span class="col-proj-name">Project</span>
+      <span class="col-proj-num" title="This person's own score on that project">${whoCol.length > 9 ? 'Theirs' : whoCol}</span>
+      <span class="col-proj-num share" title="How much of that run's points belong to them">Share</span>
+      <span class="col-proj-num" title="The project's overall score, across everyone">Overall</span>
+    </div>` : '';
+
     // Meta line: show pts-in-range when range active, cumulative totals for all-time
     const metaPts = range
       ? `${c.earned >= 0 ? '+' : ''}${Math.round(c.earned).toLocaleString()} pts this period`
@@ -1537,7 +1536,7 @@ function renderCollectors() {
           <div class="col-score" style="color:${col}">${c.score.toFixed(1)}%</div>
         </div>
       </div>
-      <div class="col-projects">${projRows}</div>
+      <div class="col-projects">${projHead}${projRows}</div>
     </div>`;
   }).join('');
 
