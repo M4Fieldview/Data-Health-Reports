@@ -1536,12 +1536,6 @@ function renderCollectors() {
     const projRows = [...c.projects]
       .sort((a,b) => ownPct(a) - ownPct(b))
       .map(p => {
-        const delta = Math.round(p._earnedInRange * 10) / 10;
-        const deltaStr = range
-          ? (delta > 0 ? `<span style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:4px">+${delta.toLocaleString()} pts</span>`
-           : delta < 0 ? `<span style="font-family:var(--mono);font-size:11px;color:var(--red);margin-left:4px">▼${Math.abs(delta).toLocaleString()} pts</span>`
-           : `<span style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:4px">—</span>`)
-          : '';
         // Three aligned columns under one header, rather than two stacked lines
         // of unlabelled numbers. The header names the person, so the first column
         // needs no explaining and cannot be confused with the project's own score.
@@ -1556,7 +1550,7 @@ function renderCollectors() {
         const stale = p._collReal && p._collDate && p._collDate !== p._date;
 
         const ownCell = p._collReal
-          ? `<span class="col-proj-num" style="color:${sc(own)}" title="${cleanName(c.name)}: ${pts(p._collEarned)} of ${pts(p._collPossible)} points on this project">${own}%${deltaStr}</span>`
+          ? `<span class="col-proj-num" style="color:${sc(own)}" title="${cleanName(c.name)}: ${pts(p._collEarned)} of ${pts(p._collPossible)} points on this project${range ? `, ${pts(p._earnedInRange)} of them gained in this period` : ''}">${own}%</span>`
           : `<span class="col-proj-num" style="color:var(--muted)" title="No individual score for this project on this run — only the project total is known">—</span>`;
         const shareCell = share !== null
           ? `<span class="col-proj-num share" style="color:var(--muted)" title="${pts(p._collPossible)} of the ${pts(p._runPossible)} points on this run belong to ${cleanName(c.name)}">${share}%</span>`
@@ -1580,9 +1574,11 @@ function renderCollectors() {
       <span class="col-proj-num" title="The project's overall score, across everyone">Overall</span>
     </div>` : '';
 
-    // Meta line: show pts-in-range when range active, cumulative totals for all-time
+    // Meta line: in a windowed range this is the score's own fraction -- points
+    // completed over points that were available -- so the headline percentage can
+    // be read straight off it. Outside a window it stays the cumulative total.
     const metaPts = range
-      ? `${c.earned >= 0 ? '+' : ''}${Math.round(c.earned).toLocaleString()} pts this period`
+      ? `${Math.round(c.earned).toLocaleString()} / ${Math.round(c.available).toLocaleString()} pts`
       : `${Math.round(c.totalEarned).toLocaleString()} / ${Math.round(c.totalPossible).toLocaleString()} pts`;
     return `<div class="col-card" style="cursor:pointer" onclick="openCollectorPanel(${esc(c)})">
       <div class="col-card-top">
