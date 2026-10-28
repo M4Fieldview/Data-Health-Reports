@@ -1673,6 +1673,16 @@ function renderCollectors() {
         ? `Score is points completed in the ${rangeLabel} divided by the points that were available to complete in it — work outstanding at the start, plus scope added since. Collectors who completed nothing in this period are not listed.`
         : `Score is each collector's own points earned against their own points possible, weighted across their projects. Two people on one project can and do score differently.`}
     </div>`;
+
+  // Rebuild the open panel against the list just computed. A range that excludes
+  // the person -- the zero-activity filter drops them from windowed ranges, and a
+  // narrow window can drop them entirely -- closes it rather than leaving figures
+  // on screen for a range they are not part of.
+  if (window._openCollector) {
+    const current = collectors.find(x => x.name === window._openCollector);
+    if (current) openCollectorPanel(current);
+    else closeCollectorPanel();
+  }
 }
 
 // ══════════════════════════════════════════
@@ -1680,6 +1690,10 @@ function renderCollectors() {
 // ══════════════════════════════════════════
 function openCollectorPanel(c) {
   if (typeof c === 'string') c = JSON.parse(c);
+  // Remembered so a date-filter change can rebuild this panel. Without it the
+  // panel kept the collector object captured at click time and went on showing
+  // the previous range's figures while the grid behind it updated.
+  window._openCollector = c.name;
   const range      = window._colDateRange;
   const cleanName  = n => n.replace(/_LandscapesM4/i,'').replace(/_landscapesm4/i,'').replace(/_/g,' ');
   const rangeLabel = range === 0 ? 'Latest run' : range ? `Last ${range} days` : 'All time';
@@ -1793,6 +1807,7 @@ function openCollectorPanel(c) {
 }
 
 function closeCollectorPanel() {
+  window._openCollector = null;
   document.getElementById('col-panel').classList.remove('open');
   document.getElementById('col-overlay').classList.remove('show');
 }
