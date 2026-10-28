@@ -37,8 +37,12 @@
     "2438 Navesink As Builts": [
       "Dana Grode"
     ],
-    "2456 Carolina CC CONST/Drainage": [],
-    "2456 Carolina CC IRR": [],
+    "2456 Carolina CC CONST/Drainage": [
+      "Dana Grode"
+    ],
+    "2456 Carolina CC IRR": [
+      "Dana Grode"
+    ],
     "2495 The Broadmoor As Builts": [
       "Juan Lozano",
       "Tim Hubbard"
@@ -48,7 +52,9 @@
     "2517 East Hampton As Builts": [
       "Dana Grode"
     ],
-    "2531 Big Canyon As Builts": [],
+    "2531 Big Canyon As Builts": [
+      "Tim Hubbard"
+    ],
     "2545 Merion Cricket Club As Builts": [],
     "2555 Heritage Eagle Bend Golf Club As Builts": [
       "Jeff Gasseling"
@@ -56,16 +62,29 @@
     "2567 Ft. Belvoir GC As Builts": [
       "Dana Grode"
     ],
-    "2577 Amara As Builts OFFLINE": [],
-    "2579 Lansdowne As Builts": [],
-    "2582 Ridglea As Builts": [],
+    "2577 Amara As Builts OFFLINE": [
+      "Larry Barefield"
+    ],
+    "2579 Lansdowne As Builts": [
+      "Dana Grode"
+    ],
+    "2582 Ridglea As Builts": [
+      "Jacob Meyer",
+      "Tom O'connor"
+    ],
     "2583 Wild Horse CC As Builts": [],
     "2585 Finkbine As Builts": [
       "Lucas Schroder"
     ],
-    "2590 Burlingame As Builts": [],
-    "2595 Duck Woods As Builts": [],
-    "2597 Anthem CC As Builts": [],
+    "2590 Burlingame As Builts": [
+      "Brett Lacey"
+    ],
+    "2595 Duck Woods As Builts": [
+      "Dana Grode"
+    ],
+    "2597 Anthem CC As Builts": [
+      "Shawn Westacott"
+    ],
     "2600 Weston GC As Builts": [
       "Dana Grode"
     ],
@@ -76,10 +95,15 @@
     "2609 Levey Links As Builts": [
       "Juan Lozano"
     ],
-    "2610 Lakeside Park As Builts": [],
+    "2610 Lakeside Park As Builts": [
+      "Dana Grode"
+    ],
     "2615 Cobleskill As Builts": [],
     "2616 Two Rivers CC As Builts": [],
-    "2617 Mount Ogden GC As Builts": [],
+    "2617 Mount Ogden GC As Builts": [
+      "Jeff Gasseling",
+      "Cheryl Halvorsen"
+    ],
     "2618 Sahalee As Builts": [
       "Eric Wolfert",
       "Jeff Gasseling"
@@ -104,14 +128,22 @@
     "2634 Ranch La Quinta As Builts": [
       "Tim Hubbard"
     ],
-    "2634 Rancho La Quinta As Builts": [],
-    "2634 Rancho La Quinta CLEANED AS BUILT": [],
+    "2634 Rancho La Quinta As Builts": [
+      "Tim Hubbard"
+    ],
+    "2634 Rancho La Quinta CLEANED AS BUILT": [
+      "Tim Hubbard"
+    ],
     "2636 Sage Valley As Builts": [
       "Brett Lacey"
     ],
-    "2637 Big Horn As Built": [],
+    "2637 Big Horn As Built": [
+      "Tim Hubbard"
+    ],
     "2638 Olde Post Road As Builts": [],
-    "2639 Frederica As Builts": [],
+    "2639 Frederica As Builts": [
+      "Brett Lacey"
+    ],
     "2640 Landa Park GC As Builts": [
       "Tom O'connor"
     ],
@@ -121,7 +153,9 @@
     "2642 Franklin County CC As Builts": [
       "Jacob Meyer"
     ],
-    "2644 Morongo Tukwet Canyon As Builts": [],
+    "2644 Morongo Tukwet Canyon As Builts": [
+      "Shawn Westacott"
+    ],
     "2645 Firethorn As Builts": [
       "Lucas Schroder"
     ],
@@ -134,8 +168,12 @@
     "2650 Jackson Hole As Builts": [
       "Larry Barefield"
     ],
-    "2652 Lonnie Pool GC As Builts": [],
-    "2655 West Pines As Builts": [],
+    "2652 Lonnie Pool GC As Builts": [
+      "Dana Grode"
+    ],
+    "2655 West Pines As Builts": [
+      "Brett Lacey"
+    ],
     "Big Canyon Harvey IRR Pros": [],
     "Bridgesong": [
       "Jacob Meyer",
@@ -150,8 +188,12 @@
     "Country Club of Virginia West Hampton": [],
     "Firethorn As Builts 2026": [],
     "Kettle Forge As Builts": [],
-    "Palmilla Reserve As Builts": [],
-    "Sage Valley 2026 As Builts": [],
+    "Palmilla Reserve As Builts": [
+      "Marvin Cruz"
+    ],
+    "Sage Valley 2026 As Builts": [
+      "Brett Lacey"
+    ],
     "The Broadmoor As Builts 2535": [],
     "TPC Deere Run As-Builts": [],
     "West Shore As Builts": []
