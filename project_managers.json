@@ -5,72 +5,155 @@
     "Assign in the dashboard and use Copy JSON, or edit this file directly; either way commit it to publish.",
     "An empty list means unassigned. Project names are matched exactly against project_name in the feed."
   ],
-  "managers": [],
+  "managers": [
+    "Aaron Hill",
+    "Abel Acosta",
+    "Armando Trejo",
+    "Brett Lacey",
+    "Brian Vitek",
+    "Cheryl Halvorsen",
+    "Dana Grode",
+    "Eric Wolfert",
+    "Jacob Meyer",
+    "Jeff Gasseling",
+    "Jon Morrison",
+    "Juan Lozano",
+    "Larry Barefield",
+    "Lucas Schroder",
+    "Marvin Cruz",
+    "Mike Ritchie",
+    "Robert Whitten",
+    "Shawn Westacott",
+    "Steven Ball",
+    "Tim Hubbard",
+    "Tom O'connor",
+    "Trevor Smith",
+    "Ty Arndt"
+  ],
   "assignments": {
-    "107 Taboo - As Builts": [],
-    "2438 Navesink As Builts": [],
+    "107 Taboo - As Builts": [
+      "Aaron Hill"
+    ],
+    "2438 Navesink As Builts": [
+      "Dana Grode"
+    ],
     "2456 Carolina CC CONST/Drainage": [],
     "2456 Carolina CC IRR": [],
-    "2495 The Broadmoor As Builts": [],
+    "2495 The Broadmoor As Builts": [
+      "Juan Lozano",
+      "Tim Hubbard"
+    ],
     "2504 Oleada in Los Cabos": [],
     "2507 Dalton Ranch As Builts": [],
-    "2517 East Hampton As Builts": [],
+    "2517 East Hampton As Builts": [
+      "Dana Grode"
+    ],
     "2531 Big Canyon As Builts": [],
     "2545 Merion Cricket Club As Builts": [],
-    "2555 Heritage Eagle Bend Golf Club As Builts": [],
-    "2567 Ft. Belvoir GC As Builts": [],
+    "2555 Heritage Eagle Bend Golf Club As Builts": [
+      "Jeff Gasseling"
+    ],
+    "2567 Ft. Belvoir GC As Builts": [
+      "Dana Grode"
+    ],
     "2577 Amara As Builts OFFLINE": [],
     "2579 Lansdowne As Builts": [],
     "2582 Ridglea As Builts": [],
     "2583 Wild Horse CC As Builts": [],
-    "2585 Finkbine As Builts": [],
+    "2585 Finkbine As Builts": [
+      "Lucas Schroder"
+    ],
     "2590 Burlingame As Builts": [],
     "2595 Duck Woods As Builts": [],
     "2597 Anthem CC As Builts": [],
-    "2600 Weston GC As Builts": [],
-    "2603 Kettle Forge As Builts": [],
+    "2600 Weston GC As Builts": [
+      "Dana Grode"
+    ],
+    "2603 Kettle Forge As Builts": [
+      "Larry Barefield"
+    ],
     "2605 Stonetree GC As Builts": [],
-    "2609 Levey Links As Builts": [],
+    "2609 Levey Links As Builts": [
+      "Juan Lozano"
+    ],
     "2610 Lakeside Park As Builts": [],
     "2615 Cobleskill As Builts": [],
     "2616 Two Rivers CC As Builts": [],
     "2617 Mount Ogden GC As Builts": [],
-    "2618 Sahalee As Builts": [],
-    "2619 The Reserve at Lake Keowee As Builts": [],
-    "2624 Champions Retreat As Builts": [],
-    "2627 Fayetteville CC As Builts": [],
-    "2627 Fayetteville CC Layout": [],
+    "2618 Sahalee As Builts": [
+      "Eric Wolfert",
+      "Jeff Gasseling"
+    ],
+    "2619 The Reserve at Lake Keowee As Builts": [
+      "Brett Lacey"
+    ],
+    "2624 Champions Retreat As Builts": [
+      "Brett Lacey"
+    ],
+    "2627 Fayetteville CC As Builts": [
+      "Shawn Westacott"
+    ],
+    "2627 Fayetteville CC Layout": [
+      "Shawn Westacott"
+    ],
     "2629 RCSC North Course As Builts": [],
-    "2632 Brae Burn As Builts": [],
+    "2632 Brae Burn As Builts": [
+      "Dana Grode"
+    ],
     "2632 Brae Burn Existing IRR": [],
-    "2634 Ranch La Quinta As Builts": [],
+    "2634 Ranch La Quinta As Builts": [
+      "Tim Hubbard"
+    ],
     "2634 Rancho La Quinta As Builts": [],
     "2634 Rancho La Quinta CLEANED AS BUILT": [],
-    "2636 Sage Valley As Builts": [],
+    "2636 Sage Valley As Builts": [
+      "Brett Lacey"
+    ],
     "2637 Big Horn As Built": [],
     "2638 Olde Post Road As Builts": [],
     "2639 Frederica As Builts": [],
-    "2640 Landa Park GC As Builts": [],
-    "2641 Three Forks As Builts": [],
-    "2642 Franklin County CC As Builts": [],
+    "2640 Landa Park GC As Builts": [
+      "Tom O'connor"
+    ],
+    "2641 Three Forks As Builts": [
+      "Larry Barefield"
+    ],
+    "2642 Franklin County CC As Builts": [
+      "Jacob Meyer"
+    ],
     "2644 Morongo Tukwet Canyon As Builts": [],
-    "2645 Firethorn As Builts": [],
-    "2646 Overlook Golf Course As Builts": [],
-    "2648 Greendale As-Builts": [],
-    "2650 Jackson Hole As Builts": [],
+    "2645 Firethorn As Builts": [
+      "Lucas Schroder"
+    ],
+    "2646 Overlook Golf Course As Builts": [
+      "Dana Grode"
+    ],
+    "2648 Greendale As-Builts": [
+      "Dana Grode"
+    ],
+    "2650 Jackson Hole As Builts": [
+      "Larry Barefield"
+    ],
     "2652 Lonnie Pool GC As Builts": [],
     "2655 West Pines As Builts": [],
     "Big Canyon Harvey IRR Pros": [],
-    "Bridgesong": [],
-    "Cabo Real As Builts": [],
-    "Costa Palma As Builts": [],
+    "Bridgesong": [
+      "Jacob Meyer",
+      "Tom O'connor"
+    ],
+    "Cabo Real As Builts": [
+      "Marvin Cruz"
+    ],
+    "Costa Palma As Builts": [
+      "Marvin Cruz"
+    ],
     "Country Club of Virginia West Hampton": [],
     "Firethorn As Builts 2026": [],
     "Kettle Forge As Builts": [],
     "Palmilla Reserve As Builts": [],
     "Sage Valley 2026 As Builts": [],
-    "TPC Deere Run As-Builts": [],
     "The Broadmoor As Builts 2535": [],
+    "TPC Deere Run As-Builts": [],
     "West Shore As Builts": []
   }
 }
