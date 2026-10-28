@@ -252,6 +252,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 
 <!-- COLLECTOR PANEL -->
 <div class="overlay" id="col-overlay" onclick="closeCollectorPanel()"></div>
+<!-- Positioned at body level, not inside the table: a dropdown in a <td> is clipped
+     by the table's own overflow-x scroll container and would be cut off. -->
+<div id="pm-picker" style="display:none;position:absolute;z-index:120;min-width:260px;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.5)" onclick="event.stopPropagation()"></div>
 <div class="panel" id="col-panel">
   <div class="panel-head">
     <div><h3 id="cpn-name">—</h3><p id="cpn-meta">—</p></div>
@@ -272,7 +275,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
       <span class="clabel" style="margin:0">Project Manager</span>
       <div id="ab-pmbtns" style="display:flex;gap:4px;flex-wrap:wrap"></div>
       <div id="ab-pmpub" style="display:flex;align-items:center;gap:6px;margin-left:auto"></div>
-      <datalist id="pm-names"></datalist>
+      <div id="ab-pmroster" style="display:none;flex-basis:100%;max-width:420px;margin-top:8px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px"></div>
+    
     </div>
     <div class="cards" id="ab-cards"></div>
     <div id="ab-problems"></div>
@@ -881,67 +885,51 @@ function rebuild() {
 // ══════════════════════════════════════════
 //  TAB CONTENT
 // ══════════════════════════════════════════
-// The filter bar is built from the unfiltered list, so the buttons do not vanish
-// as soon as one is pressed, and it is hidden entirely while nothing in the file
-// is assigned -- an empty control would just be a dead row.
+// The filter bar is built from the unfiltered list, so selecting a manager never
+// removes the buttons needed to select another. It is shown even with nothing
+// assigned, because it carries the roster editor and the publish controls, and
+// hiding it would hide the way to create the very first assignment.
 function buildPMBar(allPs) {
   const bar = document.getElementById('ab-pmbar');
   const box = document.getElementById('ab-pmbtns');
   if (!bar || !box) return;
+
+  // A project with two managers counts under each of them, so the button totals
+  // can legitimately sum to more than the project count.
   const counts = {};
   let unassigned = 0;
   allPs.forEach(p => {
-    const m = pmOf(p);
-    if (m) counts[m] = (counts[m] || 0) + 1; else unassigned++;
+    const ms = pmOf(p);
+    if (ms.length) ms.forEach(m => { counts[m] = (counts[m] || 0) + 1; });
+    else unassigned++;
   });
-  const names = Object.keys(counts).sort((a, b) => a.localeCompare(b));
-  // Shown even with nothing assigned yet, because it now carries the publish
-  // controls as well as the filter -- hiding it would hide the way to publish the
-  // very first assignment.
+
   bar.style.display = 'flex';
   const cur = window._pmFilter;
   const btn = (val, label, n) =>
-    `<button class="sort-btn${cur === val ? ' active' : ''}" onclick='setPMFilter(${JSON.stringify(val)})'>${label}${n != null ? ` (${n})` : ''}</button>`;
+    '<button class="sort-btn' + (cur === val ? ' active' : '') + '" onclick=\'setPMFilter(' + JSON.stringify(val) + ')\'>'
+    + label + (n != null ? ' (' + n + ')' : '') + '</button>';
+
+  // Roster order first so the bar reads the way the list was typed, then anyone
+  // assigned who is not on the roster.
+  const ordered = pmRoster().filter(n => counts[n]);
+  Object.keys(counts).forEach(n => { if (!ordered.includes(n)) ordered.push(n); });
+
   box.innerHTML = btn(null, 'All', allPs.length)
-    + names.map(n => btn(n, n, counts[n])).join('')
+    + ordered.map(n => btn(n, n, counts[n])).join('')
     + (unassigned ? btn('', 'Unassigned', unassigned) : '');
 
-  const pend = pmPending().length;
+  const pend = pmPending().length + (pmRosterPending() ? 1 : 0);
   const pub = document.getElementById('ab-pmpub');
   if (pub) {
-    pub.innerHTML = pend
-      ? `<span id="ab-pmnote" style="font-family:var(--mono);font-size:13px;color:var(--green)">${pend} unpublished</span>`
-        + `<button class="sort-btn" onclick="pmCopyJSON()" title="Copy the whole file with your changes applied, to paste into project_managers.json">Copy JSON</button>`
-        + `<button class="sort-btn" onclick="pmDiscardLocal()" title="Throw away this browser's unpublished changes">Discard</button>`
-      : `<span id="ab-pmnote" style="font-family:var(--mono);font-size:13px;color:var(--muted)">Click a Manager cell in the table to assign</span>`;
+    pub.innerHTML =
+      '<button class="sort-btn" onclick="pmEditRoster()" title="Type the list of project managers offered in the picker">Manage PMs</button>'
+      + (pend
+          ? '<span id="ab-pmnote" style="font-family:var(--mono);font-size:13px;color:var(--green)">' + pend + ' unpublished</span>'
+            + '<button class="sort-btn" onclick="pmCopyJSON()" title="Copy the whole file with your changes applied, to paste into project_managers.json">Copy JSON</button>'
+            + '<button class="sort-btn" onclick="pmDiscardLocal()" title="Throw away this browser’s unpublished changes">Discard</button>'
+          : '<span id="ab-pmnote" style="font-family:var(--mono);font-size:13px;color:var(--muted)">Click a Manager cell to assign</span>');
   }
-  const dl = document.getElementById('pm-names');
-  if (dl) dl.innerHTML = pmAllNames().map(n => `<option value="${n.replace(/"/g, '&quot;')}">`).join('');
-}
-
-// Inline editor. The row has its own click handler that opens the project panel,
-// so the cell stops propagation and the input swallows its own clicks; without
-// that, every attempt to edit would open the panel instead.
-function pmEdit(td, name) {
-  if (td.querySelector('input')) return;
-  const cur = pmOf(name);
-  const listId = 'pm-names';
-  td.innerHTML = `<input list="${listId}" value="${cur.replace(/"/g, '&quot;')}" `
-    + `style="width:100%;min-width:120px;box-sizing:border-box;font-family:inherit;font-size:15px;padding:2px 4px;`
-    + `background:var(--surface2);color:var(--text);border:1px solid var(--green);border-radius:3px"`
-    + ` onclick="event.stopPropagation()">`;
-  const inp = td.querySelector('input');
-  inp.focus();
-  inp.select();
-  let done = false;
-  const commit = () => { if (done) return; done = true; pmSet(name, inp.value); };
-  const cancel = () => { if (done) return; done = true; buildTab('ab', 'asbuilt'); };
-  inp.addEventListener('keydown', e => {
-    e.stopPropagation();
-    if (e.key === 'Enter') { e.preventDefault(); commit(); }
-    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-  });
-  inp.addEventListener('blur', commit);
 }
 
 function setPMFilter(v) {
@@ -957,7 +945,10 @@ function buildTab(pfx, type) {
   // filter that only reached the table would leave the averages above it
   // reporting on projects the filter had removed.
   if (pfx === 'ab' && window._pmFilter !== null) {
-    ps = ps.filter(p => pmOf(p) === window._pmFilter);
+    // '' means unassigned, which is an empty list rather than a member test.
+    ps = window._pmFilter === ''
+      ? ps.filter(p => pmOf(p).length === 0)
+      : ps.filter(p => pmOf(p).includes(window._pmFilter));
   }
   document.getElementById(pfx+'-loading').style.display = 'none';
   // A filter matching nothing drops back to All rather than showing the empty
@@ -1136,7 +1127,7 @@ function buildTable(pfx, ps) {
     // Unassigned projects sort to the end in both directions. They are an absence
     // of data, not a manager whose name happens to sort first or last.
     if(ss.key==='manager') {
-      const A = pmOf(a), B = pmOf(b);
+      const A = pmLabel(a), B = pmLabel(b);
       if (!A && !B) return a.name.localeCompare(b.name);
       if (!A) return 1;
       if (!B) return -1;
@@ -1152,7 +1143,7 @@ function buildTable(pfx, ps) {
     return `<tr onclick="openPanel(${esc(p)})">
       <td><span style="font-family:var(--mono);font-size:15px;color:var(--muted2)">${fmtDate(p.run_date)}</span></td>
       <td><div class="pname">${p.name}</div></td>
-      ${showPM ? `<td class="pm-cell" onclick="event.stopPropagation();pmEdit(this,${JSON.stringify(p.name).replace(/"/g,'&quot;')})" title="Click to assign"><span style="font-size:16px;color:${pmOf(p) ? 'var(--muted2)' : 'var(--muted)'};border-bottom:1px dotted ${pmPending().includes(p.name) ? 'var(--green)' : 'transparent'}">${pmOf(p) || '—'}</span></td>` : ''}
+      ${showPM ? `<td class="pm-cell" data-pm="${p.name.replace(/"/g,"&quot;")}" onclick="event.stopPropagation();pmOpenPicker(this,${JSON.stringify(p.name).replace(/"/g,"&quot;")})" title="Click to choose managers"><span style="font-size:16px;color:${pmLabel(p) ? 'var(--muted2)' : 'var(--muted)'};border-bottom:1px dotted ${pmPending().includes(p.name) ? 'var(--green)' : 'transparent'}">${pmLabel(p) || '—'}</span></td>` : ''}
       <td>${p.confidence_pct ? `<span class="sbadge ${scls(p.confidence_pct)}">${p.confidence_pct}%</span>` : `<span style="font-family:var(--mono);font-size:13px;color:var(--muted)">NA</span>`}</td>
       <td>${mb(p.irrigation_pct)}</td><td>${mb(p.drainage_pct)}</td><td>${mb(p.golf_pct)}</td>
       <td style="font-family:var(--mono);font-size:15px">${p.total_earned.toLocaleString(undefined,{maximumFractionDigits:1})} / ${p.total_possible.toLocaleString(undefined,{maximumFractionDigits:1})}</td>
@@ -1419,101 +1410,147 @@ function renderJobDetail() {
 window._colSort        = 'score';
 // Project manager assignments, from project_managers.json in this repo. Kept in a
 // file rather than the sheet because the Apps Script serves only its two known
-// tabs and cannot be taught a third from here. Editing means committing the file;
-// the dashboard reads it on load. A missing or unreadable file is not an error --
-// every project simply reads as unassigned.
-window._pmById   = {};   // project_name -> manager
+// tabs and cannot be taught a third from here.
+//
+// A project can have more than one manager, so an assignment is a list. The file
+// may still hold a bare string from before that change, and pmNorm accepts both,
+// so an older file keeps working.
+window._pmById   = {};   // project_name -> [manager, ...]
+window._pmRoster = [];   // the names offered in the picker
+window._pmLocal  = {};   // this browser's unpublished assignment changes
+window._pmRosterLocal = null;  // unpublished roster; null means "use the file's"
 window._pmFilter = null; // null = no filter; '' = unassigned only; else a manager
+
+const PM_LS_KEY  = 'dhr_pm_overrides_v1';
+const PM_LS_ROST = 'dhr_pm_roster_v1';
+
+// Accepts a list, or a comma-separated string from an older file. Trims, drops
+// blanks, and removes duplicates so a name cannot be assigned to a project twice.
+function pmNorm(v) {
+  if (v == null) return [];
+  const arr = Array.isArray(v) ? v : String(v).split(',');
+  const out = [];
+  arr.forEach(x => {
+    const t = String(x == null ? '' : x).trim();
+    if (t && !out.includes(t)) out.push(t);
+  });
+  return out;
+}
 
 async function loadProjectManagers() {
   try {
     const resp = await fetch('project_managers.json?_cb=' + Date.now(), { cache: 'no-store' });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const j = await resp.json();
-    // Accept either {assignments:{...}} or a bare map, so the file can be
-    // simplified later without breaking the dashboard.
     const a = (j && typeof j === 'object' && j.assignments) ? j.assignments : j;
     const out = {};
     Object.keys(a || {}).forEach(k => {
       if (k.startsWith('_')) return;
-      const v = String(a[k] == null ? '' : a[k]).trim();
-      if (v) out[String(k).trim()] = v;
+      out[String(k).trim()] = pmNorm(a[k]);
     });
     window._pmById = out;
+    window._pmRoster = pmNorm((j && j.managers) || []);
   } catch (e) {
     window._pmById = {};
+    window._pmRoster = [];
   }
   pmLoadLocal();
 }
 
-// Assignments come from two places. The committed file is what everyone sees;
-// local edits are this browser's unpublished changes layered on top. Keeping them
-// separate is what lets an edit apply instantly without a commit, while still
-// showing honestly that it has not been published yet.
-//
-// A local value of '' is a deliberate clear, not "no edit" -- it has to override a
-// name in the file, so presence of the key matters, never its truthiness.
-const PM_LS_KEY = 'dhr_pm_overrides_v1';
-
 function pmLoadLocal() {
   try {
     const raw = localStorage.getItem(PM_LS_KEY);
-    window._pmLocal = raw ? JSON.parse(raw) : {};
-  } catch (e) { window._pmLocal = {}; }   // private window, blocked storage, bad JSON
-  if (!window._pmLocal || typeof window._pmLocal !== 'object') window._pmLocal = {};
+    const parsed = raw ? JSON.parse(raw) : {};
+    const out = {};
+    Object.keys(parsed || {}).forEach(k => { out[k] = pmNorm(parsed[k]); });
+    window._pmLocal = out;
+  } catch (e) { window._pmLocal = {}; }
+  try {
+    const raw = localStorage.getItem(PM_LS_ROST);
+    window._pmRosterLocal = raw ? pmNorm(JSON.parse(raw)) : null;
+  } catch (e) { window._pmRosterLocal = null; }
 }
-function pmSaveLocal() {
-  try { localStorage.setItem(PM_LS_KEY, JSON.stringify(window._pmLocal || {})); }
-  catch (e) { /* storage unavailable -- edits still apply for this page view */ }
-}
-window._pmLocal = {};
 
-// The file is the base, local edits win. Both are consulted on every read so an
-// edit shows up everywhere -- table, filter bar, counts -- without a reload.
-const pmOf = p => {
+function pmSaveLocal() {
+  try {
+    localStorage.setItem(PM_LS_KEY, JSON.stringify(window._pmLocal || {}));
+    if (window._pmRosterLocal === null) localStorage.removeItem(PM_LS_ROST);
+    else localStorage.setItem(PM_LS_ROST, JSON.stringify(window._pmRosterLocal));
+  } catch (e) { /* private window or blocked storage: edits still apply to this view */ }
+}
+
+// An empty list is a deliberate clear and has to override a name in the file, so
+// presence of the key decides, never whether the value is truthy.
+function pmOf(p) {
   const n = typeof p === 'string' ? p : p.name;
   const loc = window._pmLocal || {};
-  if (Object.prototype.hasOwnProperty.call(loc, n)) return String(loc[n] || '');
-  return window._pmById[n] || '';
-};
+  if (Object.prototype.hasOwnProperty.call(loc, n)) return loc[n];
+  return window._pmById[n] || [];
+}
+const pmLabel = p => pmOf(p).join(', ');
 
-// Only the ones that actually differ from the file count as unpublished; setting a
-// value back to what the file already says is not a pending change.
-function pmPending() {
-  const loc = window._pmLocal || {};
-  return Object.keys(loc).filter(n => String(loc[n] || '') !== String(window._pmById[n] || ''));
+// The roster drives the picker. Anyone already assigned is appended even when
+// they are not on the list, so removing a name from the roster can never leave an
+// assignment invisible and unclearable.
+function pmRosterEditable() {
+  return window._pmRosterLocal !== null ? window._pmRosterLocal : window._pmRoster;
+}
+function pmRoster() {
+  const out = [...pmRosterEditable()];
+  const add = v => v.forEach(x => { if (!out.includes(x)) out.push(x); });
+  Object.values(window._pmById || {}).forEach(add);
+  Object.values(window._pmLocal || {}).forEach(add);
+  return out;
 }
 
-function pmSet(name, value) {
-  const v = String(value == null ? '' : value).trim();
+function pmSame(a, b) { return a.length === b.length && a.every((x, i) => x === b[i]); }
+
+function pmPending() {
+  const loc = window._pmLocal || {};
+  return Object.keys(loc).filter(n => !pmSame(loc[n], window._pmById[n] || []));
+}
+function pmRosterPending() {
+  return window._pmRosterLocal !== null && !pmSame(window._pmRosterLocal, window._pmRoster);
+}
+
+function pmSet(name, list) {
+  const v = pmNorm(list);
   window._pmLocal = window._pmLocal || {};
-  if (v === String(window._pmById[name] || '')) delete window._pmLocal[name];  // back to the file's value
+  if (pmSame(v, window._pmById[name] || [])) delete window._pmLocal[name];
   else window._pmLocal[name] = v;
+  pmSaveLocal();
+}
+function pmToggle(name, who) {
+  const cur = pmOf(name).slice();
+  const i = cur.indexOf(who);
+  if (i >= 0) cur.splice(i, 1); else cur.push(who);
+  pmSet(name, cur);
+  pmRenderPicker(name);
+  buildPMBar(latestByType('asbuilt'));
+  pmPaintCell(name);
+}
+
+function pmSetRoster(text) {
+  // One per line or comma separated, whichever is easier to paste.
+  const next = pmNorm(String(text || '').split(/[\n,]/));
+  window._pmRosterLocal = pmSame(next, window._pmRoster) ? null : next;
   pmSaveLocal();
   buildTab('ab', 'asbuilt');
 }
 
-// Every manager currently in use, for the autocomplete list.
-function pmAllNames() {
-  const set = new Set();
-  Object.values(window._pmById || {}).forEach(v => { if (v) set.add(v); });
-  Object.values(window._pmLocal || {}).forEach(v => { if (v) set.add(v); });
-  return [...set].sort((a, b) => a.localeCompare(b));
-}
-
-// The file as it would look with the local edits applied, ready to commit.
 function pmExportJSON() {
   const names = Object.keys(window._pmById || {});
-  (window._pmLocal ? Object.keys(window._pmLocal) : []).forEach(n => { if (!names.includes(n)) names.push(n); });
+  Object.keys(window._pmLocal || {}).forEach(n => { if (!names.includes(n)) names.push(n); });
   const assignments = {};
   names.sort((a, b) => a.localeCompare(b)).forEach(n => { assignments[n] = pmOf(n); });
   return JSON.stringify({
     _comment: [
       'Project manager assignments for the As-Builts page.',
-      'Edit in the dashboard and use Copy JSON, or edit this file directly; either way commit it to publish.',
-      'An empty string means unassigned.',
-      'Names are matched exactly against project_name in the feed.'
+      'managers is the list offered in the picker; assignments maps a project to its managers.',
+      'Assign in the dashboard and use Copy JSON, or edit this file directly; either way commit it to publish.',
+      'An empty list means unassigned. Project names are matched exactly against project_name in the feed.'
     ],
+    managers: pmRosterEditable(),
     assignments
   }, null, 2) + '\n';
 }
@@ -1524,19 +1561,24 @@ async function pmCopyJSON() {
     await navigator.clipboard.writeText(text);
     pmFlash('Copied — paste into project_managers.json and commit');
   } catch (e) {
-    // Clipboard needs a secure context and permission; fall back to selectable text
-    // rather than losing the edits.
+    // Clipboard needs a secure context and permission; show the text rather than
+    // losing the edits.
     const w = window.open('', '_blank');
-    if (w) { w.document.write('<pre style="white-space:pre-wrap;font:13px monospace">' + text.replace(/[<&]/g, m => m === '<' ? '&lt;' : '&amp;') + '</pre>'); w.document.close(); }
-    else pmFlash('Could not copy — allow pop-ups or copy from the console', true);
-    if (!w) console.log(text);
+    if (w) {
+      w.document.write('<pre style="white-space:pre-wrap;font:13px monospace">' + text.replace(/[<&]/g, m => (m === '<' ? '&lt;' : '&amp;')) + '</pre>');
+      w.document.close();
+    } else {
+      console.log(text);
+      pmFlash('Could not copy — allow pop-ups, or copy it from the console', true);
+    }
   }
 }
 
 function pmDiscardLocal() {
-  if (!pmPending().length) return;
-  if (!confirm('Discard ' + pmPending().length + ' unpublished assignment change(s) in this browser?')) return;
+  if (!pmPending().length && !pmRosterPending()) return;
+  if (!confirm('Discard this browser’s unpublished project-manager changes?')) return;
   window._pmLocal = {};
+  window._pmRosterLocal = null;
   pmSaveLocal();
   buildTab('ab', 'asbuilt');
 }
@@ -1549,6 +1591,99 @@ function pmFlash(msg, bad) {
   clearTimeout(window._pmFlashT);
   window._pmFlashT = setTimeout(() => { buildTab('ab', 'asbuilt'); }, 4000);
 }
+
+// Roster editor. A textarea, because the list is typed rarely and in bulk, and
+// pasting a column of names from elsewhere should just work.
+function pmEditRoster() {
+  const box = document.getElementById('ab-pmroster');
+  if (!box) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  pmClosePicker();
+  box.style.display = 'block';
+  box.innerHTML = '<div style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:6px">One name per line</div>'
+    + '<textarea id="ab-pmroster-ta" spellcheck="false" style="width:100%;min-height:150px;box-sizing:border-box;font-family:var(--mono);font-size:14px;padding:8px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px"></textarea>'
+    + '<div style="display:flex;gap:6px;margin-top:8px">'
+    + '<button class="sort-btn" onclick="pmSaveRosterFromBox()">Save list</button>'
+    + '<button class="sort-btn" onclick="document.getElementById(\'ab-pmroster\').style.display=\'none\'">Cancel</button>'
+    + '</div>';
+  const ta = document.getElementById('ab-pmroster-ta');
+  ta.value = pmRosterEditable().join('\n');
+  ta.focus();
+}
+function pmSaveRosterFromBox() {
+  const ta = document.getElementById('ab-pmroster-ta');
+  if (!ta) return;
+  pmSetRoster(ta.value);
+  const box = document.getElementById('ab-pmroster');
+  if (box) box.style.display = 'none';
+}
+
+// ── Checkbox picker ───────────────────────────────────────────────────────────
+// Rendered into a floating div positioned over the cell, not inside the table
+// row: a dropdown inside a <td> is clipped by the table's own overflow-x scroll
+// container, so it would be cut off on the right-hand columns.
+window._pmPickerFor = null;
+
+function pmClosePicker() {
+  const el = document.getElementById('pm-picker');
+  if (el) el.style.display = 'none';
+  window._pmPickerFor = null;
+}
+
+function pmOpenPicker(td, name) {
+  const el = document.getElementById('pm-picker');
+  if (!el) return;
+  if (window._pmPickerFor === name) { pmClosePicker(); return; }
+  window._pmPickerFor = name;
+  const r = td.getBoundingClientRect();
+  el.style.display = 'block';
+  el.style.left = Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - 280) + 'px';
+  el.style.top  = (r.bottom + window.scrollY + 4) + 'px';
+  pmRenderPicker(name);
+}
+
+function pmRenderPicker(name) {
+  const el = document.getElementById('pm-picker');
+  if (!el || window._pmPickerFor !== name) return;
+  const chosen = pmOf(name);
+  const roster = pmRoster();
+  const esc2 = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const rows = roster.length
+    ? roster.map(who => '<label style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;font-size:15px"'
+        + ' onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
+        + '<input type="checkbox" ' + (chosen.includes(who) ? 'checked ' : '')
+        + 'onchange="pmToggle(' + esc2(JSON.stringify(name)) + ',' + esc2(JSON.stringify(who)) + ')">'
+        + '<span>' + esc2(who) + '</span></label>').join('')
+    : '<div style="padding:10px;font-size:14px;color:var(--muted)">No managers yet — use Manage PMs to type the list.</div>';
+  el.innerHTML = '<div style="padding:8px 10px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;'
+      + 'letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">' + esc2(name) + '</div>'
+    + '<div style="max-height:260px;overflow-y:auto">' + rows + '</div>'
+    + '<div style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--border)">'
+    + '<button class="sort-btn" onclick="pmSet(' + esc2(JSON.stringify(name)) + ',[]);pmRenderPicker(' + esc2(JSON.stringify(name)) + ');buildTab(\'ab\',\'asbuilt\')">Clear</button>'
+    + '<button class="sort-btn" onclick="pmClosePicker();buildTab(\'ab\',\'asbuilt\')">Done</button>'
+    + '</div>';
+}
+
+// Repaint one cell in place. Rebuilding the whole tab on every checkbox would
+// destroy the row the picker is anchored to and close it after a single tick.
+function pmPaintCell(name) {
+  document.querySelectorAll('.pm-cell').forEach(td => {
+    if (td.getAttribute('data-pm') !== name) return;
+    const v = pmLabel(name);
+    const span = td.querySelector('span');
+    if (!span) return;
+    span.textContent = v || '—';
+    span.style.color = v ? 'var(--muted2)' : 'var(--muted)';
+    span.style.borderBottomColor = pmPending().includes(name) ? 'var(--green)' : 'transparent';
+  });
+}
+
+document.addEventListener('click', e => {
+  const el = document.getElementById('pm-picker');
+  if (!el || el.style.display !== 'block') return;
+  if (el.contains(e.target) || (e.target.closest && e.target.closest('.pm-cell'))) return;
+  pmClosePicker();
+});
 
 window._colDateRange   = null;  // null = all time; number = days
 window._colAsBuiltsOnly = true; // default on
