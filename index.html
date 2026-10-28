@@ -192,6 +192,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 .col-proj-head{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--border);}
 .col-proj-head .col-proj-name{color:var(--muted);}
 .col-proj-head .col-proj-num{font-size:10px;}
+.pm-cell{cursor:text;}
+.pm-cell:hover span{border-bottom-color:var(--muted)!important;}
 @media(max-width:560px){.col-proj-num.share{display:none;}}
 </style>
 </head>
@@ -269,6 +271,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
     <div id="ab-pmbar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
       <span class="clabel" style="margin:0">Project Manager</span>
       <div id="ab-pmbtns" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+      <div id="ab-pmpub" style="display:flex;align-items:center;gap:6px;margin-left:auto"></div>
+      <datalist id="pm-names"></datalist>
     </div>
     <div class="cards" id="ab-cards"></div>
     <div id="ab-problems"></div>
@@ -891,7 +895,9 @@ function buildPMBar(allPs) {
     if (m) counts[m] = (counts[m] || 0) + 1; else unassigned++;
   });
   const names = Object.keys(counts).sort((a, b) => a.localeCompare(b));
-  if (!names.length) { bar.style.display = 'none'; return; }
+  // Shown even with nothing assigned yet, because it now carries the publish
+  // controls as well as the filter -- hiding it would hide the way to publish the
+  // very first assignment.
   bar.style.display = 'flex';
   const cur = window._pmFilter;
   const btn = (val, label, n) =>
@@ -899,6 +905,43 @@ function buildPMBar(allPs) {
   box.innerHTML = btn(null, 'All', allPs.length)
     + names.map(n => btn(n, n, counts[n])).join('')
     + (unassigned ? btn('', 'Unassigned', unassigned) : '');
+
+  const pend = pmPending().length;
+  const pub = document.getElementById('ab-pmpub');
+  if (pub) {
+    pub.innerHTML = pend
+      ? `<span id="ab-pmnote" style="font-family:var(--mono);font-size:13px;color:var(--green)">${pend} unpublished</span>`
+        + `<button class="sort-btn" onclick="pmCopyJSON()" title="Copy the whole file with your changes applied, to paste into project_managers.json">Copy JSON</button>`
+        + `<button class="sort-btn" onclick="pmDiscardLocal()" title="Throw away this browser's unpublished changes">Discard</button>`
+      : `<span id="ab-pmnote" style="font-family:var(--mono);font-size:13px;color:var(--muted)">Click a Manager cell in the table to assign</span>`;
+  }
+  const dl = document.getElementById('pm-names');
+  if (dl) dl.innerHTML = pmAllNames().map(n => `<option value="${n.replace(/"/g, '&quot;')}">`).join('');
+}
+
+// Inline editor. The row has its own click handler that opens the project panel,
+// so the cell stops propagation and the input swallows its own clicks; without
+// that, every attempt to edit would open the panel instead.
+function pmEdit(td, name) {
+  if (td.querySelector('input')) return;
+  const cur = pmOf(name);
+  const listId = 'pm-names';
+  td.innerHTML = `<input list="${listId}" value="${cur.replace(/"/g, '&quot;')}" `
+    + `style="width:100%;min-width:120px;box-sizing:border-box;font-family:inherit;font-size:15px;padding:2px 4px;`
+    + `background:var(--surface2);color:var(--text);border:1px solid var(--green);border-radius:3px"`
+    + ` onclick="event.stopPropagation()">`;
+  const inp = td.querySelector('input');
+  inp.focus();
+  inp.select();
+  let done = false;
+  const commit = () => { if (done) return; done = true; pmSet(name, inp.value); };
+  const cancel = () => { if (done) return; done = true; buildTab('ab', 'asbuilt'); };
+  inp.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  inp.addEventListener('blur', commit);
 }
 
 function setPMFilter(v) {
@@ -1109,7 +1152,7 @@ function buildTable(pfx, ps) {
     return `<tr onclick="openPanel(${esc(p)})">
       <td><span style="font-family:var(--mono);font-size:15px;color:var(--muted2)">${fmtDate(p.run_date)}</span></td>
       <td><div class="pname">${p.name}</div></td>
-      ${showPM ? `<td style="font-size:16px;color:${pmOf(p) ? 'var(--muted2)' : 'var(--muted)'}">${pmOf(p) || '—'}</td>` : ''}
+      ${showPM ? `<td class="pm-cell" onclick="event.stopPropagation();pmEdit(this,${JSON.stringify(p.name).replace(/"/g,'&quot;')})" title="Click to assign"><span style="font-size:16px;color:${pmOf(p) ? 'var(--muted2)' : 'var(--muted)'};border-bottom:1px dotted ${pmPending().includes(p.name) ? 'var(--green)' : 'transparent'}">${pmOf(p) || '—'}</span></td>` : ''}
       <td>${p.confidence_pct ? `<span class="sbadge ${scls(p.confidence_pct)}">${p.confidence_pct}%</span>` : `<span style="font-family:var(--mono);font-size:13px;color:var(--muted)">NA</span>`}</td>
       <td>${mb(p.irrigation_pct)}</td><td>${mb(p.drainage_pct)}</td><td>${mb(p.golf_pct)}</td>
       <td style="font-family:var(--mono);font-size:15px">${p.total_earned.toLocaleString(undefined,{maximumFractionDigits:1})} / ${p.total_possible.toLocaleString(undefined,{maximumFractionDigits:1})}</td>
@@ -1400,9 +1443,112 @@ async function loadProjectManagers() {
   } catch (e) {
     window._pmById = {};
   }
+  pmLoadLocal();
 }
 
-const pmOf = p => window._pmById[p.name] || '';
+// Assignments come from two places. The committed file is what everyone sees;
+// local edits are this browser's unpublished changes layered on top. Keeping them
+// separate is what lets an edit apply instantly without a commit, while still
+// showing honestly that it has not been published yet.
+//
+// A local value of '' is a deliberate clear, not "no edit" -- it has to override a
+// name in the file, so presence of the key matters, never its truthiness.
+const PM_LS_KEY = 'dhr_pm_overrides_v1';
+
+function pmLoadLocal() {
+  try {
+    const raw = localStorage.getItem(PM_LS_KEY);
+    window._pmLocal = raw ? JSON.parse(raw) : {};
+  } catch (e) { window._pmLocal = {}; }   // private window, blocked storage, bad JSON
+  if (!window._pmLocal || typeof window._pmLocal !== 'object') window._pmLocal = {};
+}
+function pmSaveLocal() {
+  try { localStorage.setItem(PM_LS_KEY, JSON.stringify(window._pmLocal || {})); }
+  catch (e) { /* storage unavailable -- edits still apply for this page view */ }
+}
+window._pmLocal = {};
+
+// The file is the base, local edits win. Both are consulted on every read so an
+// edit shows up everywhere -- table, filter bar, counts -- without a reload.
+const pmOf = p => {
+  const n = typeof p === 'string' ? p : p.name;
+  const loc = window._pmLocal || {};
+  if (Object.prototype.hasOwnProperty.call(loc, n)) return String(loc[n] || '');
+  return window._pmById[n] || '';
+};
+
+// Only the ones that actually differ from the file count as unpublished; setting a
+// value back to what the file already says is not a pending change.
+function pmPending() {
+  const loc = window._pmLocal || {};
+  return Object.keys(loc).filter(n => String(loc[n] || '') !== String(window._pmById[n] || ''));
+}
+
+function pmSet(name, value) {
+  const v = String(value == null ? '' : value).trim();
+  window._pmLocal = window._pmLocal || {};
+  if (v === String(window._pmById[name] || '')) delete window._pmLocal[name];  // back to the file's value
+  else window._pmLocal[name] = v;
+  pmSaveLocal();
+  buildTab('ab', 'asbuilt');
+}
+
+// Every manager currently in use, for the autocomplete list.
+function pmAllNames() {
+  const set = new Set();
+  Object.values(window._pmById || {}).forEach(v => { if (v) set.add(v); });
+  Object.values(window._pmLocal || {}).forEach(v => { if (v) set.add(v); });
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+// The file as it would look with the local edits applied, ready to commit.
+function pmExportJSON() {
+  const names = Object.keys(window._pmById || {});
+  (window._pmLocal ? Object.keys(window._pmLocal) : []).forEach(n => { if (!names.includes(n)) names.push(n); });
+  const assignments = {};
+  names.sort((a, b) => a.localeCompare(b)).forEach(n => { assignments[n] = pmOf(n); });
+  return JSON.stringify({
+    _comment: [
+      'Project manager assignments for the As-Builts page.',
+      'Edit in the dashboard and use Copy JSON, or edit this file directly; either way commit it to publish.',
+      'An empty string means unassigned.',
+      'Names are matched exactly against project_name in the feed.'
+    ],
+    assignments
+  }, null, 2) + '\n';
+}
+
+async function pmCopyJSON() {
+  const text = pmExportJSON();
+  try {
+    await navigator.clipboard.writeText(text);
+    pmFlash('Copied — paste into project_managers.json and commit');
+  } catch (e) {
+    // Clipboard needs a secure context and permission; fall back to selectable text
+    // rather than losing the edits.
+    const w = window.open('', '_blank');
+    if (w) { w.document.write('<pre style="white-space:pre-wrap;font:13px monospace">' + text.replace(/[<&]/g, m => m === '<' ? '&lt;' : '&amp;') + '</pre>'); w.document.close(); }
+    else pmFlash('Could not copy — allow pop-ups or copy from the console', true);
+    if (!w) console.log(text);
+  }
+}
+
+function pmDiscardLocal() {
+  if (!pmPending().length) return;
+  if (!confirm('Discard ' + pmPending().length + ' unpublished assignment change(s) in this browser?')) return;
+  window._pmLocal = {};
+  pmSaveLocal();
+  buildTab('ab', 'asbuilt');
+}
+
+function pmFlash(msg, bad) {
+  const el = document.getElementById('ab-pmnote');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = bad ? 'var(--red)' : 'var(--green)';
+  clearTimeout(window._pmFlashT);
+  window._pmFlashT = setTimeout(() => { buildTab('ab', 'asbuilt'); }, 4000);
+}
 
 window._colDateRange   = null;  // null = all time; number = days
 window._colAsBuiltsOnly = true; // default on
