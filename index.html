@@ -2096,9 +2096,14 @@ function renderCollectors() {
 // projects is asking about the state they are in now.
 window._mgrRange = 0;
 window._mgrSort  = 'score';
+// Points mode inside a windowed range. Off, the score is what was completed in
+// the window; on, it is the running total for the same projects. The window still
+// decides which projects are listed either way -- only the figures change.
+window._mgrTotals = false;
 
 function setMgrRange(n) { window._mgrRange = n; renderManagers(); }
 function setMgrSort(k)  { window._mgrSort  = k; renderManagers(); }
+function setMgrTotals(v) { window._mgrTotals = !!v; renderManagers(); }
 
 function renderManagers() {
   const loading = document.getElementById('mgr-loading');
@@ -2163,9 +2168,14 @@ function renderManagers() {
     });
   });
 
+  // Latest Run and All have no baseline, so their figures are already totals and
+  // the toggle has nothing to switch. windowed is what the rest of the function
+  // keys off, rather than testing range and the toggle separately in four places.
+  const windowed = !!range && !window._mgrTotals;
+
   let mgrs = Object.values(map).map(m => ({
     ...m,
-    score: range
+    score: windowed
       ? (m.available > 0 ? Math.min(100, (m.earned / m.available) * 100) : 0)
       : (m.totalPossible > 0 ? (m.totalEarned / m.totalPossible) * 100 : 0),
     ptsLost: m.totalPossible - m.totalEarned,
@@ -2175,7 +2185,10 @@ function renderManagers() {
   // gained nothing has nothing to report, and a 0% card beside projects sitting at
   // 90% reads as a failure rather than as no movement. Unassigned is exempt --
   // it is a gap to notice, not a performance figure.
-  if (range) mgrs = mgrs.filter(m => m.earned >= 0.05 || m.name === UNASSIGNED);
+  // Only while showing window figures. On totals, a manager whose projects did not
+  // move still has a real score for them, and dropping them would empty the tab of
+  // exactly the quiet projects totals are being used to inspect.
+  if (windowed) mgrs = mgrs.filter(m => m.earned >= 0.05 || m.name === UNASSIGNED);
 
   const sort = window._mgrSort;
   if (sort === 'score')         mgrs.sort((a, b) => b.score - a.score);
@@ -2193,6 +2206,18 @@ function renderManagers() {
   const sortBtns = [['score', 'Score'], ['ptslost', 'Pts Lost'], ['name', 'Name'], ['projects', '# Projects']]
     .map(([k, label]) => `<button class="sort-btn${sort === k ? ' active' : ''}" onclick="setMgrSort('${k}')">${label}</button>`).join('');
 
+  // Hidden on Latest Run and All, where both settings would show the same numbers
+  // and the control would be dead.
+  const totalsBtns = range
+    ? `<div>
+         <div class="clabel">Points</div>
+         <div style="display:flex;gap:4px">
+           <button class="sort-btn${!window._mgrTotals ? ' active' : ''}" onclick="setMgrTotals(false)" title="Points completed inside the selected range">In Range</button>
+           <button class="sort-btn${window._mgrTotals ? ' active' : ''}" onclick="setMgrTotals(true)" title="Running totals for the same projects, ignoring the range for the figures only">Totals</button>
+         </div>
+       </div>`
+    : '';
+
   const initials = n => n === UNASSIGNED ? '?' :
     (n.split(/[\s_]+/).filter(Boolean).slice(0, 2).map(x => x[0] || '').join('').toUpperCase() || n[0].toUpperCase());
 
@@ -2202,7 +2227,7 @@ function renderManagers() {
     const lostStr = (sort === 'ptslost' && lost > 0.05)
       ? `<span style="color:var(--red)" title="Points still outstanding across these projects">▼ ${lost.toLocaleString()} pts lost</span> · `
       : '';
-    const metaPts = range
+    const metaPts = windowed
       ? `${Math.round(m.earned).toLocaleString()} / ${Math.round(m.available).toLocaleString()} pts`
       : `${Math.round(m.totalEarned).toLocaleString()} / ${Math.round(m.totalPossible).toLocaleString()} pts`;
 
@@ -2243,19 +2268,22 @@ function renderManagers() {
         <div class="clabel">Date Range</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap">${rangeBtns}</div>
       </div>
+      ${totalsBtns}
       <div style="margin-left:auto">
         <div class="clabel">Sort By</div>
         <div style="display:flex;gap:4px">${sortBtns}</div>
       </div>
     </div>
     <div style="display:flex;align-items:baseline;gap:12px;margin:14px 0">
-      <div class="slabel" style="margin:0">Project Manager Performance — ${rangeLabel} · As-Builts</div>
+      <div class="slabel" style="margin:0">Project Manager Performance — ${rangeLabel}${range && window._mgrTotals ? ' · totals' : ''} · As-Builts</div>
       <div style="font-family:var(--mono);font-size:13px;color:var(--muted)">${assigned} manager${assigned !== 1 ? 's' : ''}</div>
     </div>
     ${mgrs.length ? `<div class="col-grid">${cards}</div>` : `<div class="empty-state"><p>No managers assigned yet — assign them on the As-Builts tab.</p></div>`}
     <div style="font-size:12px;color:var(--muted);font-style:italic;margin-top:4px">
-      ${range
-        ? `Score is points completed in the ${rangeLabel} divided by the points that were available to complete in it. Managers whose projects gained nothing in this period are not listed.`
+      ${windowed
+        ? `Score is points completed in the ${rangeLabel} divided by the points that were available to complete in it. Managers whose projects gained nothing in this period are not listed — switch Points to Totals to see them.`
+        : range
+        ? `Projects are those active in the ${rangeLabel}; the figures are their running totals, not just this period's movement. A project with two managers counts for both.`
         : `Score is the points earned against points possible across the projects each manager owns. A project with two managers counts for both.`}
     </div>`;
 }
