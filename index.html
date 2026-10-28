@@ -226,6 +226,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
     <button class="tab-btn" onclick="switchTab('trends',this)">Trends</button>
     <button class="tab-btn" onclick="switchTab('detail',this)">Job Detail</button>
     <button class="tab-btn" onclick="switchTab('collectors',this)">Collectors</button>
+    <button class="tab-btn" onclick="switchTab('managers',this)">Project Mgrs</button>
   </div>
   <div class="header-meta">
     <div class="meta-badge"><span class="status-dot loading" id="statusDot"></span><span id="statusText">Connecting…</span></div>
@@ -381,6 +382,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
 <div class="page" id="page-collectors">
   <div id="col-loading" class="loading-state"><p>Loading data…</p></div>
   <div id="col-content" style="display:none"></div>
+</div>
+
+<!-- PROJECT MANAGERS -->
+<div class="page" id="page-managers">
+  <div id="mgr-loading" class="loading-state"><p>Loading data…</p></div>
+  <div id="mgr-content" style="display:none"></div>
 </div>
 
 <!-- TRENDS -->
@@ -880,6 +887,7 @@ function rebuild() {
   renderTrends();
   buildJobDetail();
   renderCollectors();
+  renderManagers();
 }
 
 // ══════════════════════════════════════════
@@ -1519,6 +1527,9 @@ function pmSet(name, list) {
   if (pmSame(v, window._pmById[name] || [])) delete window._pmLocal[name];
   else window._pmLocal[name] = v;
   pmSaveLocal();
+  // The managers tab aggregates these assignments, so it has to be rebuilt
+  // when one changes or it keeps showing the previous grouping.
+  if (typeof renderManagers === 'function') renderManagers();
 }
 function pmToggle(name, who) {
   const cur = pmOf(name).slice();
@@ -2074,6 +2085,182 @@ function renderCollectors() {
 }
 
 // ══════════════════════════════════════════
+//  PROJECT MANAGERS
+// ══════════════════════════════════════════
+// Mirrors the Collectors tab, with one deliberate difference: a collector owns a
+// share of a project, so that tab reports their own points against their own
+// possible. A manager owns the whole project, so there is no share to compute --
+// the figures here are the projects' own, grouped by who manages them.
+//
+// Defaults to Latest Run rather than All, because a manager asking about their
+// projects is asking about the state they are in now.
+window._mgrRange = 0;
+window._mgrSort  = 'score';
+
+function setMgrRange(n) { window._mgrRange = n; renderManagers(); }
+function setMgrSort(k)  { window._mgrSort  = k; renderManagers(); }
+
+function renderManagers() {
+  const loading = document.getElementById('mgr-loading');
+  const content = document.getElementById('mgr-content');
+  if (!loading || !content) return;
+  const allDates = Object.keys(RUNS).sort();
+  if (!allDates.length) { loading.style.display = 'block'; content.style.display = 'none'; return; }
+  loading.style.display = 'none';
+  content.style.display = 'block';
+
+  // Same windowing rules as the Collectors tab: 0 is the latest run on its own and
+  // takes the no-baseline path, so its score is confidence rather than movement.
+  const range = window._mgrRange;
+  const latestDate = allDates[allDates.length - 1];
+  let activeDates, baselineDates;
+  if (range === 0) { activeDates = [latestDate]; baselineDates = []; }
+  else if (!range) { activeDates = allDates; baselineDates = []; }
+  else {
+    const cutoff = new Date(latestDate);
+    cutoff.setDate(cutoff.getDate() - range + 1);
+    const cutStr = cutoff.toISOString().slice(0, 10);
+    activeDates   = allDates.filter(d => d >= cutStr);
+    baselineDates = allDates.filter(d => d <  cutStr);
+  }
+
+  // As-Builts only, because that is the only page assignments are kept for.
+  const latest = {}, baseline = {};
+  activeDates.forEach(d => {
+    (RUNS[d] || []).filter(p => p.type === 'asbuilt' && p.confidence_pct > 0).forEach(p => {
+      if (!latest[p.name] || d > latest[p.name]._date) latest[p.name] = { ...p, _date: d };
+    });
+  });
+  baselineDates.forEach(d => {
+    (RUNS[d] || []).filter(p => p.type === 'asbuilt' && p.confidence_pct > 0).forEach(p => {
+      if (!baseline[p.name] || d > baseline[p.name]._date) baseline[p.name] = { ...p, _date: d };
+    });
+  });
+
+  // A project with two managers counts for both. An unassigned one is collected
+  // under its own card rather than dropped, so the tab shows what is unmanaged
+  // instead of quietly omitting it.
+  const UNASSIGNED = '— Unassigned';
+  const map = {};
+  Object.values(latest).forEach(p => {
+    const who = pmOf(p);
+    const keys = who.length ? who : [UNASSIGNED];
+    const bl = range ? (baseline[p.name] || null) : null;
+
+    const earned   = p.total_earned   || 0;
+    const possible = p.total_possible || 0;
+    const blEarned = bl ? (bl.total_earned || 0) : 0;
+    const gained    = range ? Math.max(0, earned - blEarned) : earned;
+    const available = range ? Math.max(0, possible - blEarned) : possible;
+
+    keys.forEach(k => {
+      const m = map[k] || (map[k] = { name: k, projects: [], earned: 0, available: 0, totalEarned: 0, totalPossible: 0 });
+      m.projects.push({ ...p, _gained: gained, _available: available });
+      m.earned        += gained;
+      m.available     += available;
+      m.totalEarned   += earned;
+      m.totalPossible += possible;
+    });
+  });
+
+  let mgrs = Object.values(map).map(m => ({
+    ...m,
+    score: range
+      ? (m.available > 0 ? Math.min(100, (m.earned / m.available) * 100) : 0)
+      : (m.totalPossible > 0 ? (m.totalEarned / m.totalPossible) * 100 : 0),
+    ptsLost: m.totalPossible - m.totalEarned,
+  }));
+
+  // Same rule as the Collectors tab: in a windowed range a manager whose projects
+  // gained nothing has nothing to report, and a 0% card beside projects sitting at
+  // 90% reads as a failure rather than as no movement. Unassigned is exempt --
+  // it is a gap to notice, not a performance figure.
+  if (range) mgrs = mgrs.filter(m => m.earned >= 0.05 || m.name === UNASSIGNED);
+
+  const sort = window._mgrSort;
+  if (sort === 'score')         mgrs.sort((a, b) => b.score - a.score);
+  else if (sort === 'name')     mgrs.sort((a, b) => a.name.localeCompare(b.name));
+  else if (sort === 'projects') mgrs.sort((a, b) => b.projects.length - a.projects.length);
+  else if (sort === 'ptslost')  mgrs.sort((a, b) => b.ptsLost - a.ptsLost);
+  // Unassigned last whatever the sort, since it is not a person being ranked.
+  mgrs.sort((a, b) => (a.name === UNASSIGNED ? 1 : 0) - (b.name === UNASSIGNED ? 1 : 0));
+
+  const rangeLabel = range === 0 ? `latest run (${fmtDate(latestDate)})`
+                   : range ? `last ${range} days` : 'all time';
+
+  const rangeBtns = [[0, 'Latest Run'], [7, 'Last 7'], [30, 'Last 30'], [60, 'Last 60'], [180, 'Last 180'], [null, 'All']]
+    .map(([n, label]) => `<button class="sort-btn${range === n ? ' active' : ''}" onclick="setMgrRange(${n})">${label}</button>`).join('');
+  const sortBtns = [['score', 'Score'], ['ptslost', 'Pts Lost'], ['name', 'Name'], ['projects', '# Projects']]
+    .map(([k, label]) => `<button class="sort-btn${sort === k ? ' active' : ''}" onclick="setMgrSort('${k}')">${label}</button>`).join('');
+
+  const initials = n => n === UNASSIGNED ? '?' :
+    (n.split(/[\s_]+/).filter(Boolean).slice(0, 2).map(x => x[0] || '').join('').toUpperCase() || n[0].toUpperCase());
+
+  const cards = mgrs.map(m => {
+    const col = m.name === UNASSIGNED ? 'var(--muted)' : sc(m.score);
+    const lost = Math.round(m.ptsLost * 10) / 10;
+    const lostStr = (sort === 'ptslost' && lost > 0.05)
+      ? `<span style="color:var(--red)" title="Points still outstanding across these projects">▼ ${lost.toLocaleString()} pts lost</span> · `
+      : '';
+    const metaPts = range
+      ? `${Math.round(m.earned).toLocaleString()} / ${Math.round(m.available).toLocaleString()} pts`
+      : `${Math.round(m.totalEarned).toLocaleString()} / ${Math.round(m.totalPossible).toLocaleString()} pts`;
+
+    const rows = [...m.projects].sort((a, b) => a.confidence_pct - b.confidence_pct).map(p => {
+      const pLost = Math.round(((p.total_possible || 0) - (p.total_earned || 0)) * 10) / 10;
+      return `<div class="col-proj-row" style="cursor:pointer" onclick="openPanel(${esc(p)})">
+        <span class="col-proj-name" title="${p.name}">${p.name}</span>
+        <span class="col-proj-num" style="color:var(--muted)" title="Points still outstanding on this project">${pLost > 0.05 ? pLost.toLocaleString() : '—'}</span>
+        <span class="col-proj-num" style="color:${sc(p.confidence_pct)}">${p.confidence_pct}%</span>
+      </div>`;
+    }).join('');
+
+    const head = m.projects.length ? `<div class="col-proj-head">
+      <span class="col-proj-name">Project</span>
+      <span class="col-proj-num" title="Points still outstanding">Lost</span>
+      <span class="col-proj-num" title="The project's confidence score">Score</span>
+    </div>` : '';
+
+    return `<div class="col-card">
+      <div class="col-card-top">
+        <div class="col-avatar" style="background:${col}22;color:${col}">${initials(m.name)}</div>
+        <div>
+          <div class="col-name">${m.name}</div>
+          <div class="col-meta">${m.projects.length} project${m.projects.length !== 1 ? 's' : ''} · ${lostStr}${metaPts}</div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div style="font-family:var(--mono);font-size:26px;font-weight:700;color:${col}">${m.score.toFixed(1)}%</div>
+        </div>
+      </div>
+      <div class="col-projects">${head}${rows}</div>
+    </div>`;
+  }).join('');
+
+  const assigned = mgrs.filter(m => m.name !== UNASSIGNED).length;
+  content.innerHTML = `
+    <div style="display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap;margin-bottom:6px">
+      <div>
+        <div class="clabel">Date Range</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">${rangeBtns}</div>
+      </div>
+      <div style="margin-left:auto">
+        <div class="clabel">Sort By</div>
+        <div style="display:flex;gap:4px">${sortBtns}</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:12px;margin:14px 0">
+      <div class="slabel" style="margin:0">Project Manager Performance — ${rangeLabel} · As-Builts</div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--muted)">${assigned} manager${assigned !== 1 ? 's' : ''}</div>
+    </div>
+    ${mgrs.length ? `<div class="col-grid">${cards}</div>` : `<div class="empty-state"><p>No managers assigned yet — assign them on the As-Builts tab.</p></div>`}
+    <div style="font-size:12px;color:var(--muted);font-style:italic;margin-top:4px">
+      ${range
+        ? `Score is points completed in the ${rangeLabel} divided by the points that were available to complete in it. Managers whose projects gained nothing in this period are not listed.`
+        : `Score is the points earned against points possible across the projects each manager owns. A project with two managers counts for both.`}
+    </div>`;
+}
+
+// ══════════════════════════════════════════
 //  COLLECTOR PANEL
 // ══════════════════════════════════════════
 function openCollectorPanel(c) {
@@ -2206,6 +2393,7 @@ function switchTab(tab, btn) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+tab).classList.add('active');
   if (tab === 'collectors') renderCollectors();
+  if (tab === 'managers') renderManagers();
 }
 
 // ══════════════════════════════════════════
