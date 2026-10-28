@@ -266,6 +266,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
     <p>As-built projects are any projects without "Staking" in the name.</p>
   </div>
   <div id="ab-content" style="display:none">
+    <div id="ab-pmbar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      <span class="clabel" style="margin:0">Project Manager</span>
+      <div id="ab-pmbtns" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+    </div>
     <div class="cards" id="ab-cards"></div>
     <div id="ab-problems"></div>
     <div class="legend">
@@ -287,6 +291,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:
           <button class="sort-btn" onclick="sortTbl('ab','confidence')">Confidence</button>
           <button class="sort-btn" onclick="sortTbl('ab','name')">Name</button>
           <button class="sort-btn" onclick="sortTbl('ab','points')">Points</button>
+          <button class="sort-btn" onclick="sortTbl('ab','manager')">Manager</button>
         </div>
       </div>
       <div style="overflow-x:auto"><table class="tbl"><thead id="ab-thead"></thead><tbody id="ab-tbody"></tbody></table></div>
@@ -497,6 +502,11 @@ async function loadData() {
   document.getElementById('statusMsg').textContent = '';
 
   try {
+    // Assignments load alongside the feed and never block it: loadProjectManagers
+    // swallows its own failures, so a missing file leaves every project unassigned
+    // rather than stopping the dashboard.
+    await loadProjectManagers();
+
     // Two requests, because doGet answers with one tab at a time. The collector
     // tab is optional: an older deployment replies {error: 'Unknown tab ...'} and
     // a network failure resolves to null, either of which leaves the dashboard on
@@ -867,9 +877,53 @@ function rebuild() {
 // ══════════════════════════════════════════
 //  TAB CONTENT
 // ══════════════════════════════════════════
+// The filter bar is built from the unfiltered list, so the buttons do not vanish
+// as soon as one is pressed, and it is hidden entirely while nothing in the file
+// is assigned -- an empty control would just be a dead row.
+function buildPMBar(allPs) {
+  const bar = document.getElementById('ab-pmbar');
+  const box = document.getElementById('ab-pmbtns');
+  if (!bar || !box) return;
+  const counts = {};
+  let unassigned = 0;
+  allPs.forEach(p => {
+    const m = pmOf(p);
+    if (m) counts[m] = (counts[m] || 0) + 1; else unassigned++;
+  });
+  const names = Object.keys(counts).sort((a, b) => a.localeCompare(b));
+  if (!names.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  const cur = window._pmFilter;
+  const btn = (val, label, n) =>
+    `<button class="sort-btn${cur === val ? ' active' : ''}" onclick='setPMFilter(${JSON.stringify(val)})'>${label}${n != null ? ` (${n})` : ''}</button>`;
+  box.innerHTML = btn(null, 'All', allPs.length)
+    + names.map(n => btn(n, n, counts[n])).join('')
+    + (unassigned ? btn('', 'Unassigned', unassigned) : '');
+}
+
+function setPMFilter(v) {
+  window._pmFilter = v;
+  buildTab('ab', 'asbuilt');
+}
+
 function buildTab(pfx, type) {
-  const ps = latestByType(type);
+  let ps = latestByType(type);
+  if (pfx === 'ab') buildPMBar(ps);
+  // Applied here rather than in buildTable so the cards, the charts and the
+  // problem list all describe the same set of projects as the table does. A
+  // filter that only reached the table would leave the averages above it
+  // reporting on projects the filter had removed.
+  if (pfx === 'ab' && window._pmFilter !== null) {
+    ps = ps.filter(p => pmOf(p) === window._pmFilter);
+  }
   document.getElementById(pfx+'-loading').style.display = 'none';
+  // A filter matching nothing drops back to All rather than showing the empty
+  // state, which reads as "the feed returned nothing" and hides the filter bar
+  // that would let you undo it.
+  if (!ps.length && pfx === 'ab' && window._pmFilter !== null) {
+    window._pmFilter = null;
+    return buildTab(pfx, type);
+  }
   if (!ps.length) {
     document.getElementById(pfx+'-empty').style.display = 'block';
     document.getElementById(pfx+'-content').style.display = 'none';
@@ -1025,6 +1079,9 @@ function buildProblemProjects(pfx, ps) {
 //  TABLE
 // ══════════════════════════════════════════
 const TH_HTML = `<tr><th>Run Date</th><th>Project</th><th>Confidence</th><th>Irrigation</th><th>Drainage</th><th>Golf</th><th>Points</th><th>Collector(s)</th><th></th></tr>`;
+// The manager column is As-Builts only, so the two tables no longer share one
+// header string.
+const TH_HTML_PM = `<tr><th>Run Date</th><th>Project</th><th>Manager</th><th>Confidence</th><th>Irrigation</th><th>Drainage</th><th>Golf</th><th>Points</th><th>Collector(s)</th><th></th></tr>`;
 
 function buildTable(pfx, ps) {
   const ss = sortState[pfx];
@@ -1033,15 +1090,26 @@ function buildTable(pfx, ps) {
     if(ss.key==='confidence') return (a.confidence_pct-b.confidence_pct)*ss.dir;
     if(ss.key==='name')       return a.name.localeCompare(b.name)*ss.dir;
     if(ss.key==='points')     return (a.total_earned-b.total_earned)*ss.dir;
+    // Unassigned projects sort to the end in both directions. They are an absence
+    // of data, not a manager whose name happens to sort first or last.
+    if(ss.key==='manager') {
+      const A = pmOf(a), B = pmOf(b);
+      if (!A && !B) return a.name.localeCompare(b.name);
+      if (!A) return 1;
+      if (!B) return -1;
+      return A.localeCompare(B)*ss.dir || a.name.localeCompare(b.name);
+    }
     return 0;
   });
   document.getElementById(pfx+'-count').textContent = `${s.length} projects · sorted by ${ss.key} ${ss.dir===-1?'↓':'↑'}`;
-  document.getElementById(pfx+'-thead').innerHTML = TH_HTML;
+  const showPM = pfx === 'ab';
+  document.getElementById(pfx+'-thead').innerHTML = showPM ? TH_HTML_PM : TH_HTML;
   document.getElementById(pfx+'-tbody').innerHTML = s.map(p=>{
     const cols=(p.counts.collectorNames||[]);
     return `<tr onclick="openPanel(${esc(p)})">
       <td><span style="font-family:var(--mono);font-size:15px;color:var(--muted2)">${fmtDate(p.run_date)}</span></td>
       <td><div class="pname">${p.name}</div></td>
+      ${showPM ? `<td style="font-size:16px;color:${pmOf(p) ? 'var(--muted2)' : 'var(--muted)'}">${pmOf(p) || '—'}</td>` : ''}
       <td>${p.confidence_pct ? `<span class="sbadge ${scls(p.confidence_pct)}">${p.confidence_pct}%</span>` : `<span style="font-family:var(--mono);font-size:13px;color:var(--muted)">NA</span>`}</td>
       <td>${mb(p.irrigation_pct)}</td><td>${mb(p.drainage_pct)}</td><td>${mb(p.golf_pct)}</td>
       <td style="font-family:var(--mono);font-size:15px">${p.total_earned.toLocaleString(undefined,{maximumFractionDigits:1})} / ${p.total_possible.toLocaleString(undefined,{maximumFractionDigits:1})}</td>
@@ -1306,6 +1374,36 @@ function renderJobDetail() {
 //  COLLECTORS
 // ══════════════════════════════════════════
 window._colSort        = 'score';
+// Project manager assignments, from project_managers.json in this repo. Kept in a
+// file rather than the sheet because the Apps Script serves only its two known
+// tabs and cannot be taught a third from here. Editing means committing the file;
+// the dashboard reads it on load. A missing or unreadable file is not an error --
+// every project simply reads as unassigned.
+window._pmById   = {};   // project_name -> manager
+window._pmFilter = null; // null = no filter; '' = unassigned only; else a manager
+
+async function loadProjectManagers() {
+  try {
+    const resp = await fetch('project_managers.json?_cb=' + Date.now(), { cache: 'no-store' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const j = await resp.json();
+    // Accept either {assignments:{...}} or a bare map, so the file can be
+    // simplified later without breaking the dashboard.
+    const a = (j && typeof j === 'object' && j.assignments) ? j.assignments : j;
+    const out = {};
+    Object.keys(a || {}).forEach(k => {
+      if (k.startsWith('_')) return;
+      const v = String(a[k] == null ? '' : a[k]).trim();
+      if (v) out[String(k).trim()] = v;
+    });
+    window._pmById = out;
+  } catch (e) {
+    window._pmById = {};
+  }
+}
+
+const pmOf = p => window._pmById[p.name] || '';
+
 window._colDateRange   = null;  // null = all time; number = days
 window._colAsBuiltsOnly = true; // default on
 
