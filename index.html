@@ -2114,28 +2114,37 @@ function renderManagers() {
   loading.style.display = 'none';
   content.style.display = 'block';
 
-  // Same windowing rules as the Collectors tab: 0 is the latest run on its own and
-  // takes the no-baseline path, so its score is confidence rather than movement.
+  // Which projects: the active As-Builts, exactly as the As-Builts tab defines
+  // them, so the header's Active within control governs this tab too. Each project
+  // contributes its own most recent run, which is why a project last run weeks ago
+  // still appears with its last known figures instead of vanishing.
+  //
+  // Building the list from this tab's own date window instead was the bug behind
+  // "nothing changes when switching Active within": on Latest Run the window held
+  // only the newest run, so widening Active within added older projects that the
+  // window then dropped again. The two controls now do separate jobs -- Active
+  // within picks the projects, Date Range sets the period movement is measured
+  // over -- and neither cancels the other.
+  const ps = latestByType('asbuilt').filter(p => p.confidence_pct > 0);
+
+  // Which period: the baseline is each project's most recent run before the start
+  // of the range, so "in range" means everything completed since then. All has no
+  // baseline and is therefore totals by definition.
   const range = window._mgrRange;
   const latestDate = allDates[allDates.length - 1];
-  let activeDates, baselineDates;
-  if (range === 0) { activeDates = [latestDate]; baselineDates = []; }
-  else if (!range) { activeDates = allDates; baselineDates = []; }
-  else {
+  const hasWindow = range !== null && range !== undefined;
+
+  let cutStr = null;
+  if (range === 0) {
+    cutStr = latestDate;              // movement in the newest run alone
+  } else if (hasWindow) {
     const cutoff = new Date(latestDate);
     cutoff.setDate(cutoff.getDate() - range + 1);
-    const cutStr = cutoff.toISOString().slice(0, 10);
-    activeDates   = allDates.filter(d => d >= cutStr);
-    baselineDates = allDates.filter(d => d <  cutStr);
+    cutStr = cutoff.toISOString().slice(0, 10);
   }
+  const baselineDates = cutStr === null ? [] : allDates.filter(d => d < cutStr);
 
-  // As-Builts only, because that is the only page assignments are kept for.
-  const latest = {}, baseline = {};
-  activeDates.forEach(d => {
-    (RUNS[d] || []).filter(p => p.type === 'asbuilt' && p.confidence_pct > 0).forEach(p => {
-      if (!latest[p.name] || d > latest[p.name]._date) latest[p.name] = { ...p, _date: d };
-    });
-  });
+  const baseline = {};
   baselineDates.forEach(d => {
     (RUNS[d] || []).filter(p => p.type === 'asbuilt' && p.confidence_pct > 0).forEach(p => {
       if (!baseline[p.name] || d > baseline[p.name]._date) baseline[p.name] = { ...p, _date: d };
@@ -2147,16 +2156,16 @@ function renderManagers() {
   // instead of quietly omitting it.
   const UNASSIGNED = '— Unassigned';
   const map = {};
-  Object.values(latest).forEach(p => {
+  ps.forEach(p => {
     const who = pmOf(p);
     const keys = who.length ? who : [UNASSIGNED];
-    const bl = range ? (baseline[p.name] || null) : null;
+    const bl = hasWindow ? (baseline[p.name] || null) : null;
 
     const earned   = p.total_earned   || 0;
     const possible = p.total_possible || 0;
     const blEarned = bl ? (bl.total_earned || 0) : 0;
-    const gained    = range ? Math.max(0, earned - blEarned) : earned;
-    const available = range ? Math.max(0, possible - blEarned) : possible;
+    const gained    = hasWindow ? Math.max(0, earned - blEarned) : earned;
+    const available = hasWindow ? Math.max(0, possible - blEarned) : possible;
 
     keys.forEach(k => {
       const m = map[k] || (map[k] = { name: k, projects: [], earned: 0, available: 0, totalEarned: 0, totalPossible: 0 });
@@ -2171,7 +2180,7 @@ function renderManagers() {
   // Latest Run and All have no baseline, so their figures are already totals and
   // the toggle has nothing to switch. windowed is what the rest of the function
   // keys off, rather than testing range and the toggle separately in four places.
-  const windowed = !!range && !window._mgrTotals;
+  const windowed = hasWindow && !window._mgrTotals;
 
   let mgrs = Object.values(map).map(m => ({
     ...m,
@@ -2199,7 +2208,7 @@ function renderManagers() {
   mgrs.sort((a, b) => (a.name === UNASSIGNED ? 1 : 0) - (b.name === UNASSIGNED ? 1 : 0));
 
   const rangeLabel = range === 0 ? `latest run (${fmtDate(latestDate)})`
-                   : range ? `last ${range} days` : 'all time';
+                   : hasWindow ? `last ${range} days` : 'all time';
 
   const rangeBtns = [[0, 'Latest Run'], [7, 'Last 7'], [30, 'Last 30'], [60, 'Last 60'], [180, 'Last 180'], [null, 'All']]
     .map(([n, label]) => `<button class="sort-btn${range === n ? ' active' : ''}" onclick="setMgrRange(${n})">${label}</button>`).join('');
@@ -2208,7 +2217,7 @@ function renderManagers() {
 
   // Hidden on Latest Run and All, where both settings would show the same numbers
   // and the control would be dead.
-  const totalsBtns = range
+  const totalsBtns = hasWindow
     ? `<div>
          <div class="clabel">Points</div>
          <div style="display:flex;gap:4px">
@@ -2275,15 +2284,19 @@ function renderManagers() {
       </div>
     </div>
     <div style="display:flex;align-items:baseline;gap:12px;margin:14px 0">
-      <div class="slabel" style="margin:0">Project Manager Performance — ${rangeLabel}${range && window._mgrTotals ? ' · totals' : ''} · As-Builts</div>
+      <div class="slabel" style="margin:0">Project Manager Performance — ${rangeLabel}${hasWindow && window._mgrTotals ? ' · totals' : ''} · As-Builts active ${activeWindowLabel()}</div>
       <div style="font-family:var(--mono);font-size:13px;color:var(--muted)">${assigned} manager${assigned !== 1 ? 's' : ''}</div>
     </div>
-    ${mgrs.length ? `<div class="col-grid">${cards}</div>` : `<div class="empty-state"><p>No managers assigned yet — assign them on the As-Builts tab.</p></div>`}
+    ${mgrs.length
+      ? `<div class="col-grid">${cards}</div>`
+      : `<div class="empty-state"><p>${ps.length
+          ? 'No managers to show for this combination — try a wider Date Range, or Active within.'
+          : 'No active As-Builts projects in this window — widen Active within in the header.'}</p></div>`}
     <div style="font-size:12px;color:var(--muted);font-style:italic;margin-top:4px">
       ${windowed
         ? `Score is points completed in the ${rangeLabel} divided by the points that were available to complete in it. Managers whose projects gained nothing in this period are not listed — switch Points to Totals to see them.`
-        : range
-        ? `Projects are those active in the ${rangeLabel}; the figures are their running totals, not just this period's movement. A project with two managers counts for both.`
+        : hasWindow
+        ? `Projects are the active As-Builts; the figures are their running totals, not just this period's movement. A project with two managers counts for both.`
         : `Score is the points earned against points possible across the projects each manager owns. A project with two managers counts for both.`}
     </div>`;
 }
